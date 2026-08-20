@@ -21,7 +21,7 @@ export const moderateContent = asyncHandler(async (req: Request, res: Response) 
     });
   }
 
-  const result = await moderationService.moderateContent(req.organizationId, input);
+  const result = await moderationService.moderateContent(req.organizationId, input as any);
 
   res.status(200).json({
     success: true,
@@ -86,7 +86,7 @@ export const listContent = asyncHandler(async (req: Request, res: Response) => {
     });
   }
 
-  const result = await moderationService.listContent(req.organizationId, options);
+  const result = await moderationService.listContent(req.organizationId, options as any);
 
   res.status(200).json({
     success: true,

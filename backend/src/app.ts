@@ -61,6 +61,8 @@ import organizationsRoutes from './modules/organizations/organizations.routes';
 import apiKeysRoutes from './modules/auth/api-keys.routes';
 import moderationRoutes from './modules/moderation/moderation.routes';
 import casesRoutes from './modules/cases/cases.routes';
+import appealsRoutes from './modules/appeals/appeals.routes';
+import analyticsRoutes from './modules/analytics/analytics.routes';
 
 // API v1 routes
 const apiRouter = express.Router();
@@ -80,6 +82,8 @@ apiRouter.use('/organizations', organizationsRoutes);
 apiRouter.use('/api-keys', apiKeysRoutes);
 apiRouter.use('/', moderationRoutes); // /moderate, /content
 apiRouter.use('/cases', casesRoutes);
+apiRouter.use('/appeals', appealsRoutes);
+apiRouter.use('/analytics', analyticsRoutes);
 
 // Mount API router
 app.use(`/api/${config.apiVersion}`, apiRouter);

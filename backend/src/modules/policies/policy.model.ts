@@ -54,8 +54,8 @@ const policySchema = new Schema<IPolicy>(
     },
     status: {
       type: String,
-      enum: ['draft', 'active', 'archived'],
-      default: 'draft',
+      enum: Object.values(PolicyStatus),
+      default: PolicyStatus.DRAFT,
       index: true,
     },
     currentVersion: {

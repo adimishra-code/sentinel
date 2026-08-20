@@ -42,14 +42,14 @@ const caseSchema = new Schema<ICase>(
     },
     status: {
       type: String,
-      enum: ['pending', 'in_review', 'resolved', 'escalated', 'dismissed'],
-      default: 'pending',
+      enum: Object.values(CaseStatus),
+      default: CaseStatus.PENDING,
       index: true,
     },
     priority: {
       type: String,
-      enum: ['critical', 'high', 'medium', 'low'],
-      default: 'medium',
+      enum: Object.values(CasePriority),
+      default: CasePriority.MEDIUM,
       index: true,
     },
     severity: {
