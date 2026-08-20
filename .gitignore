@@ -61,3 +61,10 @@ Desktop.ini
 .cache/
 .eslintcache
 .stylelintcache
+
+# Documentation/Planning files (not part of codebase)
+PHASE_*.md
+*_VERIFICATION.md
+*_PLAN.md
+IMPLEMENTATION_SUMMARY.md
+CLAUDE.md
