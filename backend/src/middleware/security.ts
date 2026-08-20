@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
+// @ts-ignore - xss-clean has no types
 import xss from 'xss-clean';
 import hpp from 'hpp';
 import config from '../config';
@@ -32,7 +33,7 @@ export const corsOptions = {
   maxAge: 86400, // 24 hours
 };
 
-export const createRateLimiter = (options?: Partial<rateLimit.RateLimitRequestHandler>) => {
+export const createRateLimiter = (options?: Partial<any>) => {
   return rateLimit({
     windowMs: config.rateLimit.windowMs,
     max: config.rateLimit.maxRequests,

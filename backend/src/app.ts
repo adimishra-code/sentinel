@@ -55,6 +55,11 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Import module routes
+import authRoutes from './modules/auth/auth.routes';
+import organizationsRoutes from './modules/organizations/organizations.routes';
+import apiKeysRoutes from './modules/auth/api-keys.routes';
+
 // API v1 routes
 const apiRouter = express.Router();
 
@@ -66,6 +71,11 @@ apiRouter.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Mount module routes
+apiRouter.use('/auth', authRoutes);
+apiRouter.use('/organizations', organizationsRoutes);
+apiRouter.use('/api-keys', apiKeysRoutes);
 
 // Mount API router
 app.use(`/api/${config.apiVersion}`, apiRouter);
