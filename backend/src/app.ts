@@ -59,6 +59,7 @@ app.get('/health', (req, res) => {
 import authRoutes from './modules/auth/auth.routes';
 import organizationsRoutes from './modules/organizations/organizations.routes';
 import apiKeysRoutes from './modules/auth/api-keys.routes';
+import moderationRoutes from './modules/moderation/moderation.routes';
 
 // API v1 routes
 const apiRouter = express.Router();
@@ -76,6 +77,7 @@ apiRouter.get('/health', (req, res) => {
 apiRouter.use('/auth', authRoutes);
 apiRouter.use('/organizations', organizationsRoutes);
 apiRouter.use('/api-keys', apiKeysRoutes);
+apiRouter.use('/', moderationRoutes); // /moderate, /content
 
 // Mount API router
 app.use(`/api/${config.apiVersion}`, apiRouter);
