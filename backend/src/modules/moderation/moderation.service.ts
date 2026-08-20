@@ -7,8 +7,11 @@ import { Content } from '../content/content.model';
 import { preprocessContent } from '../content/preprocessing.utils';
 import { runDetection } from '../content/detection.engine';
 import { calculateRiskScore, determineAction } from '../content/risk-scoring.engine';
-import { ContentType } from '../../types';
+import { createCase } from '../cases/cases.service';
+import { ContentType, CasePriority } from '../../types';
+import config from '../../config';
 import logger from '../../utils/logger';
+import axios from 'axios';
 
 export interface ModerateContentInput {
   contentType: ContentType;
@@ -31,8 +34,31 @@ export interface ModerationResult {
   categories: string[];
   requiresHumanReview: boolean;
   reasoning: string[];
+  caseId?: string;
   processedAt: Date;
 }
+
+/**
+ * Call AI worker for contextual analysis
+ */
+const analyzeWithAI = async (
+  content: string,
+  context?: any
+): Promise<any> => {
+  try {
+    const response = await axios.post(`${config.worker.url}/orchestration/analyze`, {
+      content,
+      context,
+    }, {
+      timeout: 10000, // 10s timeout
+    });
+
+    return response.data;
+  } catch (error) {
+    logger.error('AI analysis failed', { error });
+    return null; // Fallback to fast detection only
+  }
+};
 
 /**
  * Moderate content
@@ -81,6 +107,8 @@ export const moderateContent = async (
   let detectionResult;
   let riskAssessment;
   let action: 'allow' | 'allow_and_monitor' | 'remove' | 'review' = 'allow';
+  let aiAnalysis = null;
+  let caseId: string | undefined;
 
   if (input.text && preprocessed) {
     // Run fast detection
@@ -93,8 +121,60 @@ export const moderateContent = async (
     // Calculate risk score
     riskAssessment = calculateRiskScore(detectionResult);
 
-    // Determine action
+    // If risk is medium-high, escalate to AI
+    if (riskAssessment.riskScore >= 0.5) {
+      aiAnalysis = await analyzeWithAI(preprocessed.normalizedText, {
+        authorId: input.authorId,
+        language: preprocessed.detectedLanguage,
+      });
+
+      // If AI provided analysis, update risk assessment
+      if (aiAnalysis?.success && aiAnalysis.analysis) {
+        const aiResult = aiAnalysis.analysis;
+
+        // Override with AI recommendation if confidence is high
+        if (aiResult.overallConfidence > 0.7) {
+          riskAssessment.riskScore = Math.max(riskAssessment.riskScore, aiResult.overallSeverity || 0);
+          riskAssessment.confidence = aiResult.overallConfidence;
+          riskAssessment.requiresHumanReview = aiResult.requiresHumanReview || riskAssessment.requiresHumanReview;
+
+          if (aiResult.contextualFindings) {
+            riskAssessment.reasoning.push(`AI Analysis: ${aiResult.contextualFindings}`);
+          }
+        }
+      }
+    }
+
+    // Determine final action
     action = determineAction(riskAssessment);
+
+    // Create case for human review
+    if (action === 'review' || riskAssessment.requiresHumanReview) {
+      const priority: CasePriority =
+        riskAssessment.severity === 'critical' ? CasePriority.CRITICAL :
+        riskAssessment.severity === 'high' ? CasePriority.HIGH :
+        riskAssessment.severity === 'medium' ? CasePriority.MEDIUM :
+        CasePriority.LOW;
+
+      const caseDoc = await createCase({
+        contentId: content._id.toString(),
+        organizationId,
+        riskScore: riskAssessment.riskScore,
+        severity: riskAssessment.riskScore,
+        categories: riskAssessment.categories,
+        priority,
+        aiAnalysis: aiAnalysis?.success ? {
+          model: aiAnalysis.model,
+          overallSeverity: aiAnalysis.analysis.overallSeverity,
+          overallConfidence: aiAnalysis.analysis.overallConfidence,
+          contextualFindings: aiAnalysis.analysis.contextualFindings,
+          recommendedAction: aiAnalysis.analysis.recommendedAction,
+          uncertainty: aiAnalysis.analysis.uncertainty,
+        } : undefined,
+      });
+
+      caseId = caseDoc._id.toString();
+    }
   } else {
     // Non-text content - placeholder for Phase 2+
     riskAssessment = {
@@ -116,6 +196,7 @@ export const moderateContent = async (
     decision: action,
     riskScore: riskAssessment.riskScore,
     severity: riskAssessment.severity,
+    caseCreated: !!caseId,
     latencyMs,
   });
 
@@ -128,6 +209,7 @@ export const moderateContent = async (
     categories: riskAssessment.categories,
     requiresHumanReview: riskAssessment.requiresHumanReview,
     reasoning: riskAssessment.reasoning,
+    caseId,
     processedAt: new Date(),
   };
 };

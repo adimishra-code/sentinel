@@ -10,10 +10,8 @@ from contextlib import asynccontextmanager
 import os
 from datetime import datetime
 
-# Import future modules (placeholders for now)
-# from src.detection import router as detection_router
-# from src.orchestration import router as orchestration_router
-# from src.policy import router as policy_router
+# Import routers
+from orchestration.routes import router as orchestration_router
 
 
 @asynccontextmanager
@@ -27,7 +25,6 @@ async def lifespan(app: FastAPI):
     # - Redis connection
     # - Qdrant client
     # - Load fast classifiers
-    # - Initialize Gemini client for Nemotron
 
     yield
 
@@ -39,7 +36,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Sentinel Worker",
     description="AI Service for Trust & Safety Operations",
-    version="0.1.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -69,22 +66,18 @@ async def root():
     """Root endpoint"""
     return {
         "service": "Sentinel Worker",
-        "version": "0.1.0",
+        "version": "0.3.0",
         "status": "operational",
         "endpoints": {
             "health": "/health",
             "docs": "/docs",
-            "detection": "/detect (Phase 2+)",
-            "orchestration": "/orchestrate (Phase 3+)",
-            "policy": "/evaluate (Phase 3+)",
+            "orchestration": "/orchestration/analyze",
         },
     }
 
 
-# TODO Phase 2+: Mount routers
-# app.include_router(detection_router, prefix="/detect", tags=["detection"])
-# app.include_router(orchestration_router, prefix="/orchestrate", tags=["orchestration"])
-# app.include_router(policy_router, prefix="/evaluate", tags=["policy"])
+# Mount routers
+app.include_router(orchestration_router, prefix="/orchestration", tags=["orchestration"])
 
 
 if __name__ == "__main__":

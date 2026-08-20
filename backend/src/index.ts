@@ -3,6 +3,8 @@ import config from './config';
 import logger from './utils/logger';
 import mongoose from 'mongoose';
 import Redis from 'ioredis';
+import { createServer } from 'http';
+import { initializeSocket } from './utils/socket';
 
 let redisClient: Redis;
 
@@ -47,8 +49,12 @@ const startServer = async () => {
     await connectDatabase();
     await connectRedis();
 
+    // Create HTTP server and initialize Socket.IO
+    const httpServer = createServer(app);
+    initializeSocket(httpServer);
+
     // Start HTTP server
-    const server = app.listen(config.port, () => {
+    httpServer.listen(config.port, () => {
       logger.info(`Sentinel Backend started`, {
         port: config.port,
         nodeEnv: config.nodeEnv,
@@ -60,7 +66,7 @@ const startServer = async () => {
     const shutdown = async (signal: string) => {
       logger.info(`${signal} received, starting graceful shutdown`);
 
-      server.close(async () => {
+      httpServer.close(async () => {
         logger.info('HTTP server closed');
 
         try {

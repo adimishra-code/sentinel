@@ -16,11 +16,8 @@ redis==5.0.4
 # Vector store
 qdrant-client==1.9.1
 
-# AI/ML (Phase 2+)
-# google-generativeai==0.5.4  # Gemini API for Nemotron access
-# transformers==4.40.0         # Fast classifiers
-# torch==2.3.0                 # Model inference
-# sentence-transformers==2.7.0 # Embeddings
+# AI/ML - Gemini
+google-generativeai==0.8.3
 
 # Utilities
 python-dotenv==1.0.1
