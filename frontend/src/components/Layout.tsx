@@ -10,6 +10,8 @@ import {
   ChevronRight,
   User,
   BarChart2,
+  Shield,
+  Bell,
 } from 'lucide-react';
 import { useState } from 'react';
 import { clsx } from 'clsx';
@@ -18,6 +20,7 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Cases', href: '/cases', icon: FileText },
   { name: 'Analytics', href: '/analytics', icon: BarChart2 },
+  { name: 'Policies', href: '/policies', icon: Shield },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
@@ -121,6 +124,16 @@ export function Layout() {
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Notifications bell */}
+              <button
+                id="notifications-btn"
+                type="button"
+                className="relative p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 transition-colors"
+                aria-label="Notifications"
+              >
+                <Bell className="w-5 h-5" aria-hidden="true" />
+              </button>
+
               {/* User menu */}
               <div className="relative">
                 <button

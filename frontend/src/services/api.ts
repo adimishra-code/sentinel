@@ -95,3 +95,43 @@ export const analyticsApi = {
   getAppeals: () => api.get<any>('/analytics/appeals'),
   getCategories: () => api.get<any>('/analytics/categories'),
 };
+
+export const policiesApi = {
+  list: (params?: { status?: string; page?: number; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) search.append(key, String(value));
+      });
+    }
+    return api.get<{ items: any[]; pagination: any }>(`/policies?${search.toString()}`);
+  },
+  get: (id: string) => api.get<any>(`/policies/${id}`),
+  create: (data: { name: string; description?: string; categories: any[]; rules?: any }) =>
+    api.post<any>('/policies', data),
+  update: (id: string, data: any) => api.patch<any>(`/policies/${id}`, data),
+  activate: (id: string) => api.post<any>(`/policies/${id}/activate`, {}),
+  archive: (id: string) => api.post<any>(`/policies/${id}/archive`, {}),
+  getVersions: (id: string) => api.get<any[]>(`/policies/${id}/versions`),
+};
+
+export const notificationsApi = {
+  list: (params?: { unread?: boolean; page?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.unread) search.append('unread', 'true');
+    if (params?.page) search.append('page', String(params.page));
+    return api.get<{ items: any[]; unreadCount: number; pagination: any }>(
+      `/notifications?${search.toString()}`
+    );
+  },
+  markRead: (ids: string[]) => api.post<void>('/notifications/mark-read', { ids }),
+  markAllRead: () => api.post<void>('/notifications/mark-all-read', {}),
+};
+
+export const integrationsApi = {
+  listWebhooks: () => api.get<any[]>('/integrations/webhooks'),
+  createWebhook: (data: { name: string; url: string; events: string[] }) =>
+    api.post<any>('/integrations/webhooks', data),
+  deleteWebhook: (id: string) => api.delete<void>(`/integrations/webhooks/${id}`),
+  getDeliveries: (id: string) => api.get<any[]>(`/integrations/webhooks/${id}/deliveries`),
+};
