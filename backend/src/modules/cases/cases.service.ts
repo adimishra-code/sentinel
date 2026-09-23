@@ -10,6 +10,7 @@ import { AppError } from '../../middleware/errorHandler';
 import { CaseStatus, CasePriority, ModerationAction } from '../../types';
 import logger from '../../utils/logger';
 import { emitCaseEvent } from '../../utils/socket';
+import { deliverEvent } from '../integrations/integrations.service';
 
 export interface CreateCaseInput {
   contentId: string;
@@ -48,6 +49,14 @@ export const createCase = async (input: CreateCaseInput) => {
     priority: input.priority,
     categories: input.categories,
   });
+
+  // Deliver webhook event (non-blocking)
+  deliverEvent(input.organizationId, 'case.created', {
+    caseId: caseDoc._id.toString(),
+    priority: input.priority,
+    categories: input.categories,
+    riskScore: input.riskScore,
+  }).catch(() => {});
 
   return caseDoc;
 };
@@ -229,6 +238,13 @@ export const resolveCase = async (
     caseId,
     action: decision.action,
   });
+
+  // Deliver webhook event (non-blocking)
+  deliverEvent(organizationId, 'case.resolved', {
+    caseId,
+    action: decision.action,
+    moderatorId,
+  }).catch(() => {});
 
   return caseDoc;
 };

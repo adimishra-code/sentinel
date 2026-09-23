@@ -36,6 +36,12 @@ export const initializeSocket = (httpServer: HTTPServer): SocketIOServer => {
       });
     });
 
+    // Join user-specific room for direct notifications
+    socket.on('join:user', (userId: string) => {
+      socket.join(`user:${userId}`);
+      logger.info('Client joined user room', { socketId: socket.id, userId });
+    });
+
     // Leave organization room
     socket.on('leave:organization', (organizationId: string) => {
       socket.leave(`org:${organizationId}`);
