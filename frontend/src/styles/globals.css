@@ -55,7 +55,7 @@
   }
 
   .btn-danger {
-    @apply btn bg-status-critical text-white hover:bg-status-critical-600 active:bg-status-critical-700 focus-visible:ring-status-critical-500;
+    @apply btn bg-status-critical-500 text-white hover:bg-status-critical-600 active:bg-status-critical-700 focus-visible:ring-status-critical-500;
   }
 
   .btn-outline {
@@ -84,7 +84,7 @@
   }
 
   .input-error {
-    @apply border-status-critical focus:border-status-critical focus:ring-status-critical/20;
+    @apply border-status-critical-500 focus:border-status-critical-500 focus:ring-status-critical-500/20;
   }
 
   .input-disabled {
@@ -96,7 +96,7 @@
   }
 
   .form-error {
-    @apply text-body-sm text-status-critical mt-1.5;
+    @apply text-body-sm text-status-critical-500 mt-1.5;
   }
 
   .form-hint {
@@ -154,11 +154,11 @@
     @apply w-2 h-2 rounded-full;
   }
 
-  .status-dot-critical { @apply bg-status-critical; }
-  .status-dot-high { @apply bg-status-high; }
-  .status-dot-medium { @apply bg-status-medium; }
-  .status-dot-low { @apply bg-status-low; }
-  .status-dot-info { @apply bg-status-info; }
+  .status-dot-critical { @apply bg-status-critical-500; }
+  .status-dot-high { @apply bg-status-high-500; }
+  .status-dot-medium { @apply bg-status-medium-500; }
+  .status-dot-low { @apply bg-status-low-500; }
+  .status-dot-info { @apply bg-status-info-500; }
   .status-dot-neutral { @apply bg-neutral-400; }
 
   /* Table */
@@ -230,11 +230,11 @@
     @apply flex items-start gap-3 p-4 bg-white border border-neutral-200 rounded-lg shadow-xl min-w-[300px] max-w-md;
   }
 
-  .toast-critical { @apply border-l-4 border-status-critical; }
-  .toast-high { @apply border-l-4 border-status-high; }
-  .toast-medium { @apply border-l-4 border-status-medium; }
-  .toast-low { @apply border-l-4 border-status-low; }
-  .toast-info { @apply border-l-4 border-status-info; }
+  .toast-critical { @apply border-l-4 border-status-critical-500; }
+  .toast-high { @apply border-l-4 border-status-high-500; }
+  .toast-medium { @apply border-l-4 border-status-medium-500; }
+  .toast-low { @apply border-l-4 border-status-low-500; }
+  .toast-info { @apply border-l-4 border-status-info-500; }
 
   /* Skeleton loaders */
   .skeleton {
