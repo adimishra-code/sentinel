@@ -1,0 +1,112 @@
+services:
+  # Backend — Express/Node.js
+  - type: web
+    name: sentinel-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: LOG_LEVEL
+        value: info
+      - key: API_VERSION
+        value: v1
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: MONGO_URI
+        fromDatabase:
+          name: sentinel-mongo
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: sentinel-redis
+          property: connectionString
+      - key: CORS_ORIGIN
+        value: https://your-frontend-url.onrender.com  # Update this
+      - key: WORKER_URL
+        fromService:
+          type: web
+          name: sentinel-worker
+          property: hostport
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+
+  # Worker — Python FastAPI
+  - type: web
+    name: sentinel-worker
+    runtime: docker
+    dockerfilePath: ./worker/Dockerfile
+    dockerContext: ./worker
+    plan: starter
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: WORKER_PORT
+        value: 8000
+      - key: CORS_ORIGINS
+        fromService:
+          type: web
+          name: sentinel-backend
+          property: hostport
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: MODEL_PROVIDER
+        value: gemini
+      - key: MODEL_NAME
+        value: gemini-2.0-flash-exp
+      - key: MONGO_URI
+        fromDatabase:
+          name: sentinel-mongo
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: sentinel-redis
+          property: connectionString
+
+  # Frontend — Static Site (served via Nginx)
+  - type: web
+    name: sentinel-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: starter
+    autoDeploy: true
+    buildCommand: ""
+    envVars:
+      - key: VITE_API_URL
+        value: https://sentinel-backend.onrender.com/api/v1  # Update with real URL
+      - key: VITE_APP_NAME
+        value: Sentinel
+
+databases:
+  - name: sentinel-mongo
+    plan: starter
+    databaseName: sentinel
+
+# Managed Redis
+# Redis is available as a managed service on Render
+# Create it via the Render dashboard and link the service

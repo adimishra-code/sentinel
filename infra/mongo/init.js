@@ -112,10 +112,23 @@ db.notifications.createIndex({ organizationId: 1, createdAt: -1 });
 // TTL index - auto-delete read notifications after 30 days
 db.notifications.createIndex({ createdAt: 1 }, { expireAfterSeconds: 2592000, partialFilterExpression: { read: true } });
 
-// Integrations
-db.createCollection('integrations');
-db.integrations.createIndex({ organizationId: 1, type: 1 });
-db.integrations.createIndex({ organizationId: 1, status: 1 });
+// Webhooks (outbound integrations)
+db.createCollection('webhooks');
+db.webhooks.createIndex({ organizationId: 1, active: 1 });
+db.webhooks.createIndex({ organizationId: 1, createdAt: -1 });
+
+// Webhook deliveries
+db.createCollection('webhook_deliveries');
+db.webhook_deliveries.createIndex({ webhookId: 1, createdAt: -1 });
+db.webhook_deliveries.createIndex({ organizationId: 1, createdAt: -1 });
+// TTL index - auto-delete delivery records after 90 days
+db.webhook_deliveries.createIndex({ createdAt: 1 }, { expireAfterSeconds: 7776000 });
+
+// Refresh tokens
+db.createCollection('refresh_tokens');
+db.refresh_tokens.createIndex({ tokenHash: 1 }, { unique: true });
+db.refresh_tokens.createIndex({ userId: 1, revoked: 1 });
+db.refresh_tokens.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // Configuration
 db.createCollection('configuration');

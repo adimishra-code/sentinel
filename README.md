@@ -244,27 +244,96 @@ sentinel/
 │   │   ├── hooks/           # Custom hooks
 │   │   ├── stores/          # Zustand stores
 │   │   ├── pages/           # Page components
-│   │   ├── utils/           # Utilities
-│   │   ├── types/           # TypeScript types
-│   │   └── styles/          # Design system tokens
+│   │   └── services/        # API client layer
+│   ├── nginx.conf           # Production Nginx config
 │   ├── Dockerfile
-│   ├── package.json
 │   └── vite.config.ts
-├── shared/                  # Shared types/schemas
-│   ├── types/
-│   ├── schemas/
-│   └── constants/
-├── infra/                   # Infrastructure configs
-├── docker-compose.yml
+├── infra/mongo/             # MongoDB init scripts
+├── docker-compose.yml       # Local dev
+├── docker-compose.prod.yml  # Production overrides
+├── render.yaml              # Render deployment blueprint
+├── .github/workflows/ci.yml # GitHub Actions CI
 ├── .env.example
 └── README.md
 ```
 
 ---
 
+## Deployment
+
+### Option 1 — Docker (Local / Self-hosted)
+
+```bash
+# 1. Clone and configure
+git clone https://github.com/yourname/sentinel.git
+cd sentinel
+cp .env.example .env
+# Edit .env with your values — especially JWT_SECRET and GEMINI_API_KEY
+
+# 2. Start all services
+docker compose up -d
+
+# 3. Check services are running
+docker compose ps
+curl http://localhost:3000/api/v1/health
+curl http://localhost:8000/health
+```
+
+### Option 2 — Render.com
+
+1. Push repository to GitHub
+2. Create a new Blueprint on [render.com](https://render.com) pointing to your repo
+3. Render will auto-detect `render.yaml` and provision all services
+4. Set the following secrets in the Render dashboard:
+   - `GEMINI_API_KEY` — from [Google AI Studio](https://aistudio.google.com/)
+   - `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` — for email notifications (optional)
+5. Update `CORS_ORIGIN` in the backend service with your frontend URL
+
+### Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `JWT_SECRET` | ✅ | JWT signing secret (min 32 chars) |
+| `JWT_REFRESH_SECRET` | ✅ | Refresh token signing secret |
+| `MONGO_URI` | ✅ | MongoDB connection string |
+| `REDIS_URL` | ✅ | Redis connection string |
+| `GEMINI_API_KEY` | ⚠️ | Gemini API key — AI analysis disabled without it |
+| `CORS_ORIGIN` | ✅ | Allowed frontend origin(s) |
+| `SMTP_HOST` | ➖ | SMTP server (optional — email notifications) |
+| `SMTP_USER` | ➖ | SMTP username |
+| `SMTP_PASS` | ➖ | SMTP password / app password |
+
+---
+
+## API Reference
+
+All API endpoints are prefixed with `/api/v1/`.
+
+| Module | Endpoints |
+|---|---|
+| Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout` |
+| Moderation | `POST /moderate`, `GET /content`, `GET /content/:id` |
+| Cases | `GET /cases`, `GET /cases/:id`, `POST /cases/:id/resolve`, `POST /cases/:id/assign` |
+| Appeals | `POST /appeals`, `GET /appeals/:id`, `POST /appeals/:id/resolve` |
+| Policies | `GET /policies`, `POST /policies`, `POST /policies/:id/activate` |
+| Analytics | `GET /analytics/overview`, `GET /analytics/categories` |
+| Notifications | `GET /notifications`, `POST /notifications/mark-read` |
+| Audit | `GET /audit`, `GET /audit/:type/:id` |
+| Integrations | `GET /integrations/webhooks`, `POST /integrations/webhooks` |
+
+Worker endpoints (internal, port 8000):
+
+| Endpoint | Description |
+|---|---|
+| `POST /orchestration/analyze` | Full AI content analysis |
+| `POST /detection/detect` | Fast pattern-based detection |
+| `GET /benchmark` | Run detection benchmark |
+
+---
+
 ## Contributing
 
-This is a solo build project for portfolio/demo purposes. Issues and PRs welcome for bug fixes or documentation improvements.
+Issues and PRs welcome for bug fixes or documentation improvements.
 
 ---
 
@@ -276,12 +345,12 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ## Security
 
-Security vulnerabilities should be reported privately to the maintainer. See [SECURITY.md](SECURITY.md) for details.
+Security vulnerabilities should be reported privately to the maintainer.
 
 ---
 
 ## Acknowledgments
 
-- Reasoning model provider for AI capabilities
+- Google Gemini for AI reasoning capabilities
 - Qdrant for vector search
 - The trust & safety community for defining the problem space
