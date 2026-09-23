@@ -21,6 +21,20 @@ async def lifespan(app: FastAPI):
     print(f"   Model: {os.getenv('MODEL_NAME', 'gemini-2.0-flash-exp')}")
     print(f"   Gemini API configured: {'yes' if os.getenv('GEMINI_API_KEY') else 'no (AI analysis disabled)'}")
 
+    sentry_dsn = os.getenv("SENTRY_DSN")
+    if sentry_dsn:
+        try:
+            import sentry_sdk
+            from sentry_sdk.integrations.fastapi import FastApiIntegration
+            sentry_sdk.init(
+                dsn=sentry_dsn,
+                traces_sample_rate=0.2,
+                integrations=[FastApiIntegration()],
+            )
+            print("   Sentry monitoring: enabled")
+        except Exception as e:
+            print(f"   Sentry init warning: {e}")
+
     yield
 
     print("🛑 Sentinel Worker shutting down...")

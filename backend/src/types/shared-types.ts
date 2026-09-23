@@ -21,6 +21,12 @@ export enum OrganizationStatus {
   DELETED = 'deleted',
 }
 
+export enum OrganizationPlan {
+  FREE = 'free',
+  PRO = 'pro',
+  ENTERPRISE = 'enterprise',
+}
+
 export enum UserStatus {
   ACTIVE = 'active',
   SUSPENDED = 'suspended',
@@ -107,6 +113,8 @@ export interface Organization extends Timestamps {
   name: string;
   slug: string;
   status: OrganizationStatus;
+  plan?: OrganizationPlan;
+  rateLimitOverride?: number;
   settings?: Record<string, unknown>;
 }
 

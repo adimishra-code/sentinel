@@ -1,44 +1,56 @@
+import * as Sentry from '@sentry/node';
 import app from './app';
 import config from './config';
 import logger from './utils/logger';
 import mongoose from 'mongoose';
-import Redis from 'ioredis';
 import { createServer } from 'http';
 import { initializeSocket } from './utils/socket';
+import { getRedisClient, closeRedis } from './utils/redis';
+import { startModerationWorker, closeQueue } from './utils/queue';
 
-let redisClient: Redis;
+// Initialize Sentry before everything else if DSN is provided
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: config.nodeEnv,
+    tracesSampleRate: config.nodeEnv === 'production' ? 0.2 : 1.0,
+  });
+  logger.info('Sentry error monitoring initialized');
+}
 
 const connectDatabase = async () => {
   try {
-    await mongoose.connect(config.mongo.uri);
-    logger.info('Connected to MongoDB', { uri: config.mongo.uri.replace(/\/\/.*@/, '//***@') });
+    await mongoose.connect(config.mongo.uri, {
+      maxPoolSize: 20,
+      minPoolSize: 5,
+      connectTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      serverSelectionTimeoutMS: 5000,
+    });
+    logger.info('Connected to MongoDB with connection pool', {
+      maxPoolSize: 20,
+      minPoolSize: 5,
+      uri: config.mongo.uri.replace(/\/\/.*@/, '//***@'),
+    });
   } catch (error) {
     logger.error('Failed to connect to MongoDB', { error });
+    if (process.env.SENTRY_DSN) {
+      Sentry.captureException(error);
+    }
     throw error;
   }
 };
 
 const connectRedis = async () => {
   try {
-    redisClient = new Redis(config.redis.url, {
-      retryStrategy: (times) => {
-        const delay = Math.min(times * 50, 2000);
-        return delay;
-      },
-      maxRetriesPerRequest: 3,
-    });
-
-    redisClient.on('connect', () => {
-      logger.info('Connected to Redis', { url: config.redis.url });
-    });
-
-    redisClient.on('error', (error) => {
-      logger.error('Redis connection error', { error: error.message });
-    });
-
-    await redisClient.ping();
+    const redis = getRedisClient();
+    await redis.ping();
+    logger.info('Connected to Redis cache and rate limiter');
   } catch (error) {
     logger.error('Failed to connect to Redis', { error });
+    if (process.env.SENTRY_DSN) {
+      Sentry.captureException(error);
+    }
     throw error;
   }
 };
@@ -48,6 +60,14 @@ const startServer = async () => {
     // Connect to databases
     await connectDatabase();
     await connectRedis();
+
+    // Start async moderation queue worker
+    try {
+      startModerationWorker();
+      logger.info('BullMQ moderation worker initialized');
+    } catch (queueErr) {
+      logger.warn('Failed to start BullMQ moderation worker', { error: queueErr });
+    }
 
     // Create HTTP server and initialize Socket.IO
     const httpServer = createServer(app);
@@ -70,10 +90,13 @@ const startServer = async () => {
         logger.info('HTTP server closed');
 
         try {
+          await closeQueue();
+          logger.info('BullMQ queue closed');
+
           await mongoose.connection.close();
           logger.info('MongoDB connection closed');
 
-          await redisClient.quit();
+          await closeRedis();
           logger.info('Redis connection closed');
 
           process.exit(0);
@@ -96,11 +119,17 @@ const startServer = async () => {
     // Handle uncaught errors
     process.on('uncaughtException', (error) => {
       logger.error('Uncaught exception', { error: error.message, stack: error.stack });
+      if (process.env.SENTRY_DSN) {
+        Sentry.captureException(error);
+      }
       shutdown('uncaughtException');
     });
 
     process.on('unhandledRejection', (reason, promise) => {
       logger.error('Unhandled rejection', { reason, promise });
+      if (process.env.SENTRY_DSN) {
+        Sentry.captureException(reason);
+      }
       shutdown('unhandledRejection');
     });
   } catch (error) {

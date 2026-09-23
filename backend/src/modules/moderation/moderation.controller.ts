@@ -2,10 +2,11 @@ import { Request, Response } from 'express';
 import { asyncHandler } from '../../middleware/errorHandler';
 import * as moderationService from './moderation.service';
 import { ModerateContentSchema } from '../../types/schemas';
+import { enqueueModeration, moderationQueue } from '../../utils/queue';
 import { z } from 'zod';
 
 /**
- * Moderate content
+ * Moderate content (synchronously or asynchronously via queue)
  * POST /api/v1/moderate
  */
 export const moderateContent = asyncHandler(async (req: Request, res: Response) => {
@@ -21,6 +22,22 @@ export const moderateContent = asyncHandler(async (req: Request, res: Response) 
     });
   }
 
+  const isAsync = req.query.async === 'true' || req.headers['prefer'] === 'respond-async';
+
+  if (isAsync) {
+    const job = await enqueueModeration(req.organizationId, input as any);
+    return res.status(202).json({
+      success: true,
+      status: 'queued',
+      jobId: job.id,
+      meta: {
+        statusUrl: `/api/v1/moderate/jobs/${job.id}`,
+        requestId: (req as any).requestId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+
   const result = await moderationService.moderateContent(req.organizationId, input as any);
 
   res.status(200).json({
@@ -29,6 +46,41 @@ export const moderateContent = asyncHandler(async (req: Request, res: Response) 
     meta: {
       requestId: (req as any).requestId,
       timestamp: new Date().toISOString(),
+    },
+  });
+});
+
+/**
+ * Check async moderation job status
+ * GET /api/v1/moderate/jobs/:jobId
+ */
+export const getJobStatus = asyncHandler(async (req: Request, res: Response) => {
+  const { jobId } = req.params;
+  const job = await moderationQueue.getJob(jobId);
+
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message: `Job ${jobId} not found`,
+      },
+    });
+  }
+
+  const state = await job.getState();
+  const result = job.returnvalue;
+  const failedReason = job.failedReason;
+
+  res.status(200).json({
+    success: true,
+    data: {
+      jobId: job.id,
+      status: state,
+      progress: job.progress,
+      result: state === 'completed' ? result : undefined,
+      failedReason: state === 'failed' ? failedReason : undefined,
+      createdAt: new Date(job.timestamp).toISOString(),
     },
   });
 });

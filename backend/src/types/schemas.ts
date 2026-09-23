@@ -146,6 +146,16 @@ export const PaginationSchema = z.object({
 });
 
 // ============================================================================
+// WEBHOOK SCHEMAS
+// ============================================================================
+
+export const CreateWebhookSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(100),
+  url: z.string().url('Must be a valid URL'),
+  events: z.array(z.string()).min(1, 'At least one event is required'),
+});
+
+// ============================================================================
 // ID PARAM SCHEMA
 // ============================================================================
 

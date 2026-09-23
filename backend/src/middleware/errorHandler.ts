@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
+import * as Sentry from '@sentry/node';
 import logger from '../utils/logger';
 
 export class AppError extends Error {
@@ -123,6 +124,21 @@ export const errorHandler = (err: Error, req: Request, res: Response, _next: Nex
     requestId,
     organizationId: (req as any).organizationId,
   });
+
+  if (process.env.SENTRY_DSN) {
+    try {
+      Sentry.captureException(err, {
+        extra: {
+          path: req.path,
+          method: req.method,
+          requestId,
+          organizationId: (req as any).organizationId,
+        },
+      });
+    } catch (sentryErr) {
+      // Ignore Sentry dispatch failures
+    }
+  }
 
   return res.status(500).json({
     error: 'Internal Server Error',

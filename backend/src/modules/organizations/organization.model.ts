@@ -1,11 +1,13 @@
 import mongoose, { Document, Schema } from 'mongoose';
-import { OrganizationStatus } from '../../types';
+import { OrganizationStatus, OrganizationPlan } from '../../types';
 
 export interface IOrganization extends Document {
   _id: mongoose.Types.ObjectId;
   name: string;
   slug: string;
   status: OrganizationStatus;
+  plan: OrganizationPlan;
+  rateLimitOverride?: number;
   settings?: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
@@ -31,6 +33,16 @@ const organizationSchema = new Schema<IOrganization>(
       enum: Object.values(OrganizationStatus),
       default: OrganizationStatus.ACTIVE,
       index: true,
+    },
+    plan: {
+      type: String,
+      enum: Object.values(OrganizationPlan),
+      default: OrganizationPlan.PRO,
+      index: true,
+    },
+    rateLimitOverride: {
+      type: Number,
+      default: null,
     },
     settings: {
       type: Schema.Types.Mixed,

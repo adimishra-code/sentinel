@@ -45,13 +45,30 @@ app.use(sanitizeInput);
 // Global rate limiter
 app.use(createRateLimiter());
 
-// Health check endpoint (no auth required)
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
+import mongoose from 'mongoose';
+import { isRedisHealthy } from './utils/redis';
+
+// Health check endpoint with deep dependency inspection (no auth required)
+app.get('/health', async (req, res) => {
+  const isMongoConnected = mongoose.connection.readyState === 1;
+  const isRedisOk = await isRedisHealthy();
+
+  const isHealthy = isMongoConnected && isRedisOk;
+  const statusCode = isHealthy ? 200 : 503;
+
+  res.status(statusCode).json({
+    status: isHealthy ? 'healthy' : 'unhealthy',
     service: 'sentinel-backend',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    uptime: Math.floor(process.uptime()),
+    dependencies: {
+      mongodb: isMongoConnected ? 'connected' : 'disconnected',
+      redis: isRedisOk ? 'connected' : 'disconnected',
+    },
+    system: {
+      memoryUsageMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      nodeVersion: process.version,
+    },
   });
 });
 
