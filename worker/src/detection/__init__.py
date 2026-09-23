@@ -1,0 +1,3 @@
+"""
+Sentinel Worker - Detection Module
+"""

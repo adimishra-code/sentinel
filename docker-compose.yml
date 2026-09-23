@@ -163,13 +163,15 @@ services:
     environment:
       PYTHONUNBUFFERED: 1
       WORKER_PORT: 8000
+      CORS_ORIGINS: "http://backend:3000,http://localhost:3000"
       MONGO_URI: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-changeme}@mongo:27017/${MONGO_DB:-sentinel}?authSource=admin
       REDIS_URL: redis://redis:6379
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
-      MODEL_PROVIDER: ${MODEL_PROVIDER:-}
-      MODEL_NAME: ${MODEL_NAME:-}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-gemini}
+      MODEL_NAME: ${MODEL_NAME:-gemini-2.0-flash-exp}
       MODEL_API_KEY: ${MODEL_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "8000:8000"

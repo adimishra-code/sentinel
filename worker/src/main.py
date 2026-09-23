@@ -1,7 +1,6 @@
 """
 Sentinel Worker - Python AI Service
-Phase 0: Health check skeleton
-Phase 2+: Detection Engine, AI Orchestration, Policy Evaluation
+Handles detection, AI orchestration, policy evaluation, and benchmarks
 """
 
 from fastapi import FastAPI
@@ -12,40 +11,38 @@ from datetime import datetime
 
 # Import routers
 from orchestration.routes import router as orchestration_router
+from detection.routes import router as detection_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
-    # Startup
     print("🚀 Sentinel Worker starting...")
-
-    # TODO Phase 2+: Initialize connections
-    # - MongoDB connection
-    # - Redis connection
-    # - Qdrant client
-    # - Load fast classifiers
+    print(f"   Model: {os.getenv('MODEL_NAME', 'gemini-2.0-flash-exp')}")
+    print(f"   Gemini API configured: {'yes' if os.getenv('GEMINI_API_KEY') else 'no (AI analysis disabled)'}")
 
     yield
 
-    # Shutdown
     print("🛑 Sentinel Worker shutting down...")
-    # TODO: Close connections gracefully
 
 
 app = FastAPI(
     title="Sentinel Worker",
     description="AI Service for Trust & Safety Operations",
-    version="0.3.0",
+    version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
-# CORS middleware
+# CORS — only allow backend service in production
+allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Restrict in production
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -56,28 +53,40 @@ async def health_check():
     return {
         "status": "ok",
         "service": "sentinel-worker",
+        "version": "1.0.0",
         "timestamp": datetime.utcnow().isoformat(),
         "python_version": os.sys.version.split()[0],
+        "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),
     }
 
 
 @app.get("/")
 async def root():
-    """Root endpoint"""
+    """Root endpoint — service info"""
     return {
         "service": "Sentinel Worker",
-        "version": "0.3.0",
+        "version": "1.0.0",
         "status": "operational",
         "endpoints": {
             "health": "/health",
             "docs": "/docs",
+            "detection": "/detection/detect",
             "orchestration": "/orchestration/analyze",
         },
     }
 
 
+@app.get("/benchmark")
+async def run_benchmark_endpoint():
+    """Run the detection engine benchmark"""
+    from evaluation.benchmark import run_benchmark
+    result = run_benchmark()
+    return {"success": True, "data": result}
+
+
 # Mount routers
 app.include_router(orchestration_router, prefix="/orchestration", tags=["orchestration"])
+app.include_router(detection_router, prefix="/detection", tags=["detection"])
 
 
 if __name__ == "__main__":
