@@ -68,6 +68,17 @@ export const getJobStatus = asyncHandler(async (req: Request, res: Response) => 
     });
   }
 
+  // Tenant security: verify job belongs to requesting organization
+  if (req.organizationId && job.data?.organizationId !== req.organizationId) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to view this job',
+      },
+    });
+  }
+
   const state = await job.getState();
   const result = job.returnvalue;
   const failedReason = job.failedReason;

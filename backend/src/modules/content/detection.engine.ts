@@ -33,16 +33,21 @@ const PROFANITY_PATTERNS = [
   /\bc+r+a+p+/gi,
   /\bc+u+n+t+/gi,
   /\bp+i+s+s+/gi,
+  /\bi+d+i+o+t+/gi,
+  /\bs+t+u+p+i+d+/gi,
 ];
 
 /**
- * Hate speech keywords (basic patterns)
+ * Hate speech keywords & patterns
  */
 const HATE_PATTERNS = [
   /\bn+i+g+g+e+r+/gi,
   /\bf+a+g+g+o+t+/gi,
   /\br+e+t+a+r+d+/gi,
   /\bk+i+k+e+/gi,
+  /\bhate\s+(all\s+)?(jews|blacks|whites|muslims|asians|gays)\b/gi,
+  /\b(kill|attack)\s+all\s+(jews|blacks|whites|muslims)\b/gi,
+  /\b(fucking\s+)?(jew|kike|nigger)\b/gi,
 ];
 
 /**
@@ -59,7 +64,7 @@ const THREAT_PATTERNS = [
  * Sexual harassment patterns
  */
 const SEXUAL_HARASSMENT_PATTERNS = [
-  /\bsend\s+(nudes|pics|pictures)\b/gi,
+  /\bsend\s+(me\s+)?(nudes|pics|pictures)\b/gi,
   /\bshow\s+(me\s+)?(your|ur)\s+(tits|boobs|pussy|dick|cock)\b/gi,
   /\bwanna\s+(fuck|sex|bang)\b/gi,
 ];

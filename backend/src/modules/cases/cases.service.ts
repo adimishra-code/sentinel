@@ -102,8 +102,10 @@ export const getCase = async (caseId: string, organizationId: string) => {
   };
 };
 
+import mongoose from 'mongoose';
+
 /**
- * List cases (moderator queue)
+ * List cases (moderator queue with cursor support)
  */
 export const listCases = async (
   organizationId: string,
@@ -113,27 +115,67 @@ export const listCases = async (
     assignedTo?: string;
     page?: number;
     limit?: number;
+    cursor?: string;
   } = {}
 ) => {
-  const page = options.page || 1;
   const limit = Math.min(options.limit || 20, 100);
-  const skip = (page - 1) * limit;
-
   const filter: any = { organizationId };
+
   if (options.status) filter.status = options.status;
   if (options.priority) filter.priority = options.priority;
   if (options.assignedTo) filter.assignedTo = options.assignedTo;
 
-  const [items, total] = await Promise.all([
-    Case.find(filter)
-      .sort({ priority: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate('contentId', 'text contentType authorId')
-      .populate('assignedTo', 'name email')
-      .lean(),
-    Case.countDocuments(filter),
-  ]);
+  let nextCursor: string | null = null;
+  let items: any[] = [];
+  let total = 0;
+
+  if (options.cursor) {
+    // Fast O(1) indexed cursor lookup
+    try {
+      const cursorObjId = new mongoose.Types.ObjectId(options.cursor);
+      filter._id = { $lt: cursorObjId };
+    } catch (e) {
+      // Invalid cursor ignored
+    }
+
+    const [found, count] = await Promise.all([
+      Case.find(filter)
+        .sort({ _id: -1 })
+        .limit(limit + 1)
+        .populate('contentId', 'text contentType authorId')
+        .populate('assignedTo', 'name email')
+        .lean(),
+      Case.countDocuments({ organizationId }),
+    ]);
+
+    total = count;
+    if (found.length > limit) {
+      found.pop();
+      nextCursor = found[found.length - 1]._id.toString();
+    }
+    items = found;
+  } else {
+    // Page/skip pagination
+    const page = options.page || 1;
+    const skip = (page - 1) * limit;
+
+    const [found, count] = await Promise.all([
+      Case.find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('contentId', 'text contentType authorId')
+        .populate('assignedTo', 'name email')
+        .lean(),
+      Case.countDocuments(filter),
+    ]);
+
+    total = count;
+    items = found;
+    if (items.length > 0) {
+      nextCursor = items[items.length - 1]._id.toString();
+    }
+  }
 
   return {
     items: items.map(item => ({
@@ -152,10 +194,12 @@ export const listCases = async (
       createdAt: item.createdAt,
     })),
     pagination: {
-      page,
+      page: options.page || 1,
       limit,
       total,
       totalPages: Math.ceil(total / limit),
+      nextCursor,
+      hasMore: items.length === limit,
     },
   };
 };

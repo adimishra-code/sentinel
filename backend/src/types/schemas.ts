@@ -44,6 +44,17 @@ export const UpdateOrganizationSchema = z.object({
   settings: z.record(z.unknown()).optional(),
 });
 
+export const InviteMemberSchema = z.object({
+  email: z.string().email(),
+  role: z.enum(['platform_admin', 'org_admin', 'moderator', 'reviewer', 'end_user']),
+  permissions: z.array(z.string()).optional(),
+});
+
+export const UpdateMemberSchema = z.object({
+  role: z.enum(['platform_admin', 'org_admin', 'moderator', 'reviewer', 'end_user']).optional(),
+  permissions: z.array(z.string()).optional(),
+});
+
 // ============================================================================
 // CONTENT & MODERATION SCHEMAS
 // ============================================================================
@@ -75,6 +86,7 @@ export const ModerateContentSchema = z.object({
 export const ListCasesSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
+  cursor: z.string().optional(),
   status: z.enum(['pending', 'in_review', 'resolved', 'escalated', 'dismissed']).optional(),
   priority: z.enum(['critical', 'high', 'medium', 'low']).optional(),
   assignedTo: z.string().optional(),
@@ -153,6 +165,21 @@ export const CreateWebhookSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   url: z.string().url('Must be a valid URL'),
   events: z.array(z.string()).min(1, 'At least one event is required'),
+});
+
+// ============================================================================
+// AUDIT SCHEMAS
+// ============================================================================
+
+export const ListAuditLogsSchema = z.object({
+  action: z.string().optional(),
+  actorId: z.string().optional(),
+  entityType: z.string().optional(),
+  entityId: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
 // ============================================================================

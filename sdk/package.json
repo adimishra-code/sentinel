@@ -1,0 +1,27 @@
+{
+  "name": "@sentinel/sdk",
+  "version": "0.1.0",
+  "description": "Official TypeScript & JavaScript client SDK for Sentinel Trust & Safety Platform",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "sentinel",
+    "moderation",
+    "trust-and-safety",
+    "ai-moderation",
+    "content-moderation"
+  ],
+  "author": "Sentinel Team",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^5.4.5"
+  }
+}

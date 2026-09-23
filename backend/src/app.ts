@@ -47,6 +47,13 @@ app.use(createRateLimiter());
 
 import mongoose from 'mongoose';
 import { isRedisHealthy } from './utils/redis';
+import { metricsMiddleware, metricsEndpointHandler } from './utils/metrics';
+
+// Prometheus metrics middleware
+app.use(metricsMiddleware);
+
+// Prometheus scraper endpoint
+app.get('/metrics', metricsEndpointHandler);
 
 // Health check endpoint with deep dependency inspection (no auth required)
 app.get('/health', async (req, res) => {

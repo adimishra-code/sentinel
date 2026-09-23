@@ -1,5 +1,12 @@
 import { Router } from 'express';
 import { authenticate, requirePermission } from '../../middleware/auth.middleware';
+import { validateBody, validateParams } from '../../middleware/validate';
+import {
+  UpdateOrganizationSchema,
+  InviteMemberSchema,
+  UpdateMemberSchema,
+  IdParamSchema,
+} from '../../types/schemas';
 import * as organizationsController from './organizations.controller';
 import { PERMISSIONS } from '../../types';
 
@@ -12,21 +19,25 @@ router.use(authenticate);
 router.get('/', organizationsController.listUserOrganizations);
 
 // Get organization details
-router.get('/:id', organizationsController.getOrganization);
+router.get('/:id', validateParams(IdParamSchema), organizationsController.getOrganization);
 
 // Update organization
 router.patch(
   '/:id',
+  validateParams(IdParamSchema),
+  validateBody(UpdateOrganizationSchema),
   requirePermission(PERMISSIONS.ORG_WRITE),
   organizationsController.updateOrganization
 );
 
 // List organization members
-router.get('/:id/members', organizationsController.listMembers);
+router.get('/:id/members', validateParams(IdParamSchema), organizationsController.listMembers);
 
 // Invite member
 router.post(
   '/:id/members/invite',
+  validateParams(IdParamSchema),
+  validateBody(InviteMemberSchema),
   requirePermission(PERMISSIONS.ORG_MANAGE_MEMBERS),
   organizationsController.inviteMember
 );
@@ -41,6 +52,7 @@ router.delete(
 // Update member
 router.patch(
   '/:id/members/:userId',
+  validateBody(UpdateMemberSchema),
   requirePermission(PERMISSIONS.ORG_MANAGE_MEMBERS),
   organizationsController.updateMember
 );

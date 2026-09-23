@@ -34,6 +34,12 @@ interface Config {
   };
 }
 
+if (process.env.NODE_ENV === 'test') {
+  process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_must_be_at_least_32_chars_long_123456';
+  process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test_jwt_refresh_secret_must_be_at_least_32_chars_123456';
+  process.env.MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/sentinel-test';
+}
+
 const requiredEnvVars = [
   'JWT_SECRET',
   'JWT_REFRESH_SECRET',
