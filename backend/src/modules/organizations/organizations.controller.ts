@@ -164,3 +164,34 @@ export const listUserOrganizations = asyncHandler(async (req: Request, res: Resp
     },
   });
 });
+
+/**
+ * Export organization data archive (GDPR)
+ * GET /api/v1/organizations/:id/export
+ */
+export const exportOrganization = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const bundle = await organizationsService.exportOrganizationData(id, req.userId!);
+
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="sentinel-export-${id}.json"`);
+
+  res.status(200).json({
+    success: true,
+    data: bundle,
+  });
+});
+
+/**
+ * Delete organization (GDPR Right to Erasure)
+ * DELETE /api/v1/organizations/:id
+ */
+export const deleteOrganization = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await organizationsService.deleteOrganization(id, req.userId!);
+
+  res.status(200).json({
+    success: true,
+    data: result,
+  });
+});

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate, requirePermission } from '../../middleware/auth.middleware';
 import { rateLimitByOrg } from '../../middleware/rateLimitByOrg';
+import { checkMonthlyQuota } from '../../middleware/quotaLimit';
 import { validateBody, validateParams } from '../../middleware/validate';
 import { ModerateContentSchema, IdParamSchema } from '../../types/schemas';
 import * as moderationController from './moderation.controller';
@@ -8,11 +9,12 @@ import { PERMISSIONS } from '../../types';
 
 const router = Router();
 
-// Moderate endpoint - requires authentication + per-org rate limiting + input validation
+// Moderate endpoint - requires authentication + per-org rate limiting + quota check + input validation
 router.post(
   '/moderate',
   authenticate,
   rateLimitByOrg(),
+  checkMonthlyQuota,
   validateBody(ModerateContentSchema),
   moderationController.moderateContent
 );

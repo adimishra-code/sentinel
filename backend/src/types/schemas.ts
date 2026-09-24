@@ -26,6 +26,15 @@ export const RefreshTokenSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
 });
 
+export const SSOCallbackSchema = z.object({
+  provider: z.enum(['saml', 'oidc', 'google', 'okta', 'azure-ad']),
+  email: z.string().email('Invalid email address'),
+  name: z.string().min(1, 'Name is required'),
+  externalId: z.string().min(1, 'External ID is required'),
+  organizationSlug: z.string().min(1, 'Organization slug is required'),
+  idToken: z.string().optional(),
+});
+
 // ============================================================================
 // ORGANIZATION SCHEMAS
 // ============================================================================
@@ -87,6 +96,9 @@ export const ListCasesSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   cursor: z.string().optional(),
+  search: z.string().optional(),
+  fromDate: z.string().optional(),
+  toDate: z.string().optional(),
   status: z.enum(['pending', 'in_review', 'resolved', 'escalated', 'dismissed']).optional(),
   priority: z.enum(['critical', 'high', 'medium', 'low']).optional(),
   assignedTo: z.string().optional(),

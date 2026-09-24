@@ -8,6 +8,7 @@ import axios from 'axios';
 import { Webhook, WebhookDelivery, WebhookEvent } from './webhook.model';
 import { AppError } from '../../middleware/errorHandler';
 import logger from '../../utils/logger';
+import { enqueueWebhookRetry } from '../../utils/queue';
 
 const MAX_FAILURES = 5;
 const DELIVERY_TIMEOUT_MS = 10000;
@@ -166,6 +167,18 @@ export const deliverEvent = async (
           url: webhook.url,
         });
       }
+
+      // Enqueue exponential backoff retry via BullMQ
+      enqueueWebhookRetry({
+        webhookId: webhook._id.toString(),
+        organizationId,
+        url: webhook.url,
+        event,
+        payload,
+        signature,
+      }).catch((queueErr) => {
+        logger.warn('Failed to enqueue webhook retry', { error: queueErr });
+      });
     }
 
     webhook.lastDeliveryAt = new Date();

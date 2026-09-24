@@ -20,6 +20,10 @@ export const securityHeaders = [
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     // Permissions policy
     res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+    // Strict Transport Security (HSTS)
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+    // Cross-Origin Resource Policy
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
     next();
   },
 ];

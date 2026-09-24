@@ -2,9 +2,13 @@ import mongoose from 'mongoose';
 import { Organization } from './organization.model';
 import { OrganizationMember } from './organization-member.model';
 import { User } from '../auth/user.model';
+import { Case } from '../cases/case.model';
+import { Policy } from '../policies/policy.model';
+import { Webhook } from '../integrations/webhook.model';
+import { AuditLog } from '../audit/audit-log.model';
 import { AppError } from '../../middleware/errorHandler';
 import { generateSlug, generateInviteToken } from '../auth/auth.utils';
-import { UserRole } from '../../types';
+import { UserRole, OrganizationStatus } from '../../types';
 import logger from '../../utils/logger';
 
 export interface CreateOrganizationInput {
@@ -322,3 +326,66 @@ export const listUserOrganizations = async (userId: string) => {
     joinedAt: m.createdAt,
   }));
 };
+
+/**
+ * Export organization data bundle (GDPR Data Portability / SAR)
+ */
+export const exportOrganizationData = async (organizationId: string, userId: string) => {
+  const membership = await OrganizationMember.findOne({ organizationId, userId });
+  if (!membership || (membership.role !== UserRole.ORG_ADMIN && membership.role !== UserRole.PLATFORM_ADMIN)) {
+    throw AppError.forbidden('Only organization administrators can export organization data');
+  }
+
+  const [org, members, cases, policies, webhooks, auditLogs] = await Promise.all([
+    Organization.findById(organizationId).lean(),
+    OrganizationMember.find({ organizationId }).populate('userId', 'email name').lean(),
+    Case.find({ organizationId }).lean(),
+    Policy.find({ organizationId }).lean(),
+    Webhook.find({ organizationId }).lean(),
+    AuditLog.find({ organizationId }).sort({ createdAt: -1 }).limit(1000).lean(),
+  ]);
+
+  return {
+    exportDate: new Date().toISOString(),
+    organization: org,
+    members: members.map((m: any) => ({
+      email: m.userId?.email,
+      name: m.userId?.name,
+      role: m.role,
+      joinedAt: m.createdAt,
+    })),
+    casesCount: cases.length,
+    cases,
+    policies,
+    webhooks: webhooks.map((w: any) => ({
+      name: w.name,
+      url: w.url,
+      events: w.events,
+      active: w.active,
+      createdAt: w.createdAt,
+    })),
+    auditLogs,
+  };
+};
+
+/**
+ * Delete organization (GDPR Right to Erasure)
+ */
+export const deleteOrganization = async (organizationId: string, userId: string) => {
+  const membership = await OrganizationMember.findOne({ organizationId, userId });
+  if (!membership || (membership.role !== UserRole.ORG_ADMIN && membership.role !== UserRole.PLATFORM_ADMIN)) {
+    throw AppError.forbidden('Only organization administrators can delete the organization');
+  }
+
+  await Organization.findByIdAndUpdate(organizationId, {
+    status: OrganizationStatus.DELETED,
+  });
+
+  logger.warn('Organization marked as deleted (GDPR erasure)', {
+    organizationId,
+    deletedBy: userId,
+  });
+
+  return { success: true, message: 'Organization and associated resources scheduled for deletion' };
+};
+

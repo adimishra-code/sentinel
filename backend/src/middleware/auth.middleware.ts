@@ -7,6 +7,7 @@ import { OrganizationMember } from '../modules/organizations/organization-member
 import { ApiKey } from '../modules/auth/api-key.model';
 import { UserRole, UserStatus } from '../types';
 import logger from '../utils/logger';
+import { getRedisClient } from '../utils/redis';
 
 /**
  * Authenticate user via JWT or API key
@@ -30,23 +31,56 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     if (type === 'Bearer') {
       const payload = verifyAccessToken(token);
 
-      // Verify user still exists and is active
-      const user = await User.findById(payload.userId);
-      if (!user) {
-        throw AppError.unauthorized('User not found');
+      // Check token blocklist in Redis
+      try {
+        const redis = getRedisClient();
+        const isBlocklisted = await redis.get(`blocklist:token:${token}`);
+        if (isBlocklisted) {
+          throw AppError.unauthorized('Token has been revoked');
+        }
+      } catch (redisErr) {
+        if (redisErr instanceof AppError) throw redisErr;
       }
 
-      if (user.status !== UserStatus.ACTIVE) {
-        throw AppError.unauthorized('User account is not active');
+      // Check user session cache (5 minute TTL)
+      let userData: any = null;
+      try {
+        const redis = getRedisClient();
+        const cachedUser = await redis.get(`session:user:${payload.userId}`);
+        if (cachedUser) {
+          userData = JSON.parse(cachedUser);
+        }
+      } catch (cacheErr) {
+        // Fallback to database
       }
 
-      req.userId = user._id.toString();
-      req.user = {
-        id: user._id.toString(),
-        email: user.email,
-        name: user.name,
-        status: user.status,
-      };
+      if (!userData) {
+        const user = await User.findById(payload.userId);
+        if (!user) {
+          throw AppError.unauthorized('User not found');
+        }
+
+        if (user.status !== UserStatus.ACTIVE) {
+          throw AppError.unauthorized('User account is not active');
+        }
+
+        userData = {
+          id: user._id.toString(),
+          email: user.email,
+          name: user.name,
+          status: user.status,
+        };
+
+        try {
+          const redis = getRedisClient();
+          await redis.set(`session:user:${payload.userId}`, JSON.stringify(userData), 'EX', 300);
+        } catch (setErr) {
+          // Non-critical
+        }
+      }
+
+      req.userId = userData.id;
+      req.user = userData;
 
       return next();
     }
@@ -55,28 +89,52 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     if (type === 'ApiKey') {
       const keyHash = hashToken(token);
 
-      const apiKey = await ApiKey.findOne({ keyHash, status: 'active' });
-      if (!apiKey) {
-        throw AppError.unauthorized('Invalid API key');
+      // Check API key cache in Redis
+      let apiKeyData: any = null;
+      try {
+        const redis = getRedisClient();
+        const cachedKey = await redis.get(`cache:apikey:${keyHash}`);
+        if (cachedKey) {
+          apiKeyData = JSON.parse(cachedKey);
+        }
+      } catch (cacheErr) {
+        // Fallback to database
       }
 
-      // Check expiration
-      if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
+      if (!apiKeyData) {
+        const apiKey = await ApiKey.findOne({ keyHash, status: 'active' });
+        if (!apiKey) {
+          throw AppError.unauthorized('Invalid API key');
+        }
+
+        if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
+          throw AppError.unauthorized('API key has expired');
+        }
+
+        apiKeyData = {
+          organizationId: apiKey.organizationId.toString(),
+          permissions: apiKey.permissions,
+          apiKeyId: apiKey._id.toString(),
+          expiresAt: apiKey.expiresAt ? apiKey.expiresAt.toISOString() : null,
+        };
+
+        try {
+          const redis = getRedisClient();
+          await redis.set(`cache:apikey:${keyHash}`, JSON.stringify(apiKeyData), 'EX', 300);
+        } catch (setErr) {
+          // Non-critical
+        }
+      }
+
+      // Check expiration on cached key
+      if (apiKeyData.expiresAt && new Date(apiKeyData.expiresAt) < new Date()) {
         throw AppError.unauthorized('API key has expired');
       }
 
-      // Update last used timestamp (async, don't await)
-      ApiKey.updateOne({ _id: apiKey._id }, { lastUsedAt: new Date() }).exec();
-
       // Set request context
-      req.organizationId = apiKey.organizationId.toString();
-      req.permissions = apiKey.permissions;
-      req.apiKeyId = apiKey._id.toString();
-
-      logger.info('API key authentication successful', {
-        apiKeyId: apiKey._id,
-        organizationId: apiKey.organizationId,
-      });
+      req.organizationId = apiKeyData.organizationId;
+      req.permissions = apiKeyData.permissions;
+      req.apiKeyId = apiKeyData.apiKeyId;
 
       return next();
     }

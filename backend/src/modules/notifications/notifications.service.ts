@@ -8,6 +8,7 @@ import type { Transporter } from 'nodemailer';
 import { Notification, INotification, NotificationType } from './notification.model';
 import { getIO } from '../../utils/socket';
 import logger from '../../utils/logger';
+import { renderNotificationEmail } from './email-renderer';
 
 interface NotifyInput {
   organizationId: string;
@@ -81,20 +82,20 @@ export const notify = async (input: NotifyInput): Promise<INotification> => {
     if (transporter) {
       const fromName = process.env.SMTP_FROM_NAME || 'Sentinel';
       const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
+      const { html, text } = renderNotificationEmail({
+        title: input.title,
+        message: input.message,
+        type: input.type,
+        metadata: input.data,
+      });
+
       try {
         await transporter.sendMail({
           from: `"${fromName}" <${fromEmail}>`,
           to: input.email,
           subject: input.title,
-          text: input.message,
-          html: `
-            <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
-              <h2 style="color:#4f46e5;">${input.title}</h2>
-              <p>${input.message}</p>
-              <hr style="border:none;border-top:1px solid #e5e7eb;"/>
-              <p style="font-size:12px;color:#6b7280;">Sentinel Trust &amp; Safety Platform</p>
-            </div>
-          `,
+          text,
+          html,
         });
         logger.info('Email notification sent', { to: input.email, type: input.type });
       } catch (err) {

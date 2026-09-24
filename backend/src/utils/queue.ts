@@ -126,10 +126,77 @@ export const startModerationWorker = () => {
   return moderationWorker;
 };
 
+export const WEBHOOK_QUEUE_NAME = 'webhook-delivery-queue';
+
+export interface WebhookJobData {
+  webhookId: string;
+  organizationId: string;
+  url: string;
+  event: string;
+  payload: string;
+  signature: string;
+}
+
+export const webhookQueue = new Queue(WEBHOOK_QUEUE_NAME, {
+  connection,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff: {
+      type: 'exponential',
+      delay: 5000,
+    },
+    removeOnComplete: { count: 1000 },
+    removeOnFail: { count: 1000 },
+  },
+});
+
+export const enqueueWebhookRetry = async (data: WebhookJobData) => {
+  return webhookQueue.add('retry-webhook', data);
+};
+
+let webhookWorker: Worker | null = null;
+
+export const startWebhookWorker = () => {
+  if (webhookWorker) return webhookWorker;
+
+  const axios = require('axios');
+  webhookWorker = new Worker(
+    WEBHOOK_QUEUE_NAME,
+    async (job: Job<WebhookJobData>) => {
+      const { url, payload, signature, event } = job.data;
+      const res = await axios.post(url, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Sentinel-Signature': signature,
+          'X-Sentinel-Event': event,
+          'X-Sentinel-Delivery': job.id || 'retry',
+        },
+        timeout: 10000,
+      });
+
+      if (res.status < 200 || res.status >= 300) {
+        throw new Error(`Webhook target responded with status ${res.status}`);
+      }
+      return { status: res.status };
+    },
+    {
+      connection,
+      concurrency: 5,
+    }
+  );
+
+  return webhookWorker;
+};
+
 export const closeQueue = async () => {
   if (moderationWorker) {
     await moderationWorker.close();
     moderationWorker = null;
   }
+  if (webhookWorker) {
+    await webhookWorker.close();
+    webhookWorker = null;
+  }
   await moderationQueue.close();
+  await webhookQueue.close();
 };

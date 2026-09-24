@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { createRateLimiter } from '../../middleware/security';
 import { authenticate } from '../../middleware/auth.middleware';
 import { validateBody } from '../../middleware/validate';
-import { RegisterSchema, LoginSchema, RefreshTokenSchema } from '../../types/schemas';
+import { RegisterSchema, LoginSchema, RefreshTokenSchema, SSOCallbackSchema } from '../../types/schemas';
 import * as authController from './auth.controller';
 
 const router = Router();
@@ -16,6 +16,7 @@ const authRateLimit = createRateLimiter({
 // Public routes with Zod validation
 router.post('/register', authRateLimit, validateBody(RegisterSchema), authController.register);
 router.post('/login', authRateLimit, validateBody(LoginSchema), authController.login);
+router.post('/sso/callback', authRateLimit, validateBody(SSOCallbackSchema), authController.ssoCallback);
 router.post('/refresh', validateBody(RefreshTokenSchema), authController.refreshToken);
 router.post('/logout', authController.logout);
 

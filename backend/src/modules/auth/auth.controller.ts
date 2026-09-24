@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { asyncHandler } from '../../middleware/errorHandler';
 import * as authService from './auth.service';
-import { RegisterSchema, LoginSchema, RefreshTokenSchema } from '../../types/schemas';
+import { RegisterSchema, LoginSchema, RefreshTokenSchema, SSOCallbackSchema } from '../../types/schemas';
 import logger from '../../utils/logger';
 
 /**
@@ -123,6 +123,36 @@ export const getCurrentUser = asyncHandler(async (req: Request, res: Response) =
   res.status(200).json({
     success: true,
     data: user,
+    meta: {
+      requestId: (req as any).requestId,
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
+/**
+ * Handle Enterprise SSO Callback (SAML 2.0 / OIDC)
+ * POST /api/v1/auth/sso/callback
+ */
+export const ssoCallback = asyncHandler(async (req: Request, res: Response) => {
+  const input = SSOCallbackSchema.parse(req.body);
+
+  const result = await authService.ssoLogin({
+    ...input,
+    userAgent: req.headers['user-agent'],
+    ipAddress: req.ip,
+  });
+
+  logger.info('User authenticated via SSO', {
+    userId: result.user.id,
+    email: result.user.email,
+    organizationId: result.organization.id,
+    provider: input.provider,
+  });
+
+  res.status(200).json({
+    success: true,
+    data: result,
     meta: {
       requestId: (req as any).requestId,
       timestamp: new Date().toISOString(),

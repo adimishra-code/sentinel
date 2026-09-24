@@ -116,6 +116,9 @@ export const listCases = async (
     page?: number;
     limit?: number;
     cursor?: string;
+    search?: string;
+    fromDate?: string;
+    toDate?: string;
   } = {}
 ) => {
   const limit = Math.min(options.limit || 20, 100);
@@ -124,6 +127,25 @@ export const listCases = async (
   if (options.status) filter.status = options.status;
   if (options.priority) filter.priority = options.priority;
   if (options.assignedTo) filter.assignedTo = options.assignedTo;
+
+  if (options.fromDate || options.toDate) {
+    filter.createdAt = {};
+    if (options.fromDate) filter.createdAt.$gte = new Date(options.fromDate);
+    if (options.toDate) filter.createdAt.$lte = new Date(options.toDate);
+  }
+
+  if (options.search) {
+    const matchingContent = await Content.find({
+      organizationId,
+      text: { $regex: options.search, $options: 'i' },
+    }).select('_id').limit(200).lean();
+
+    const contentIds = matchingContent.map(c => c._id);
+    filter.$or = [
+      { contentId: { $in: contentIds } },
+      { categories: { $regex: options.search, $options: 'i' } },
+    ];
+  }
 
   let nextCursor: string | null = null;
   let items: any[] = [];

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { User, IUser } from './user.model';
 import { Organization } from '../organizations/organization.model';
 import { OrganizationMember } from '../organizations/organization-member.model';
@@ -336,5 +337,115 @@ export const getCurrentUser = async (userId: string) => {
     emailVerified: user.emailVerified,
     lastLoginAt: user.lastLoginAt,
     organizations,
+  };
+};
+
+export interface SSOLoginInput {
+  provider: 'saml' | 'oidc' | 'google' | 'okta' | 'azure-ad';
+  email: string;
+  name: string;
+  externalId: string;
+  organizationSlug: string;
+  idToken?: string;
+  userAgent?: string;
+  ipAddress?: string;
+}
+
+/**
+ * Enterprise SSO Login (SAML 2.0 / OIDC)
+ * Authenticates user via enterprise provider, maps to organization, and issues tokens
+ */
+export const ssoLogin = async (input: SSOLoginInput): Promise<AuthResponse> => {
+  const { provider, email, name, organizationSlug, userAgent, ipAddress } = input;
+
+  const organization = await Organization.findOne({ slug: organizationSlug.toLowerCase() });
+  if (!organization) {
+    throw AppError.notFound(`Organization with slug "${organizationSlug}" not found`);
+  }
+
+  // Find or create user
+  let user = await User.findOne({ email: email.toLowerCase() });
+  if (!user) {
+    const randomSecret = crypto.randomBytes(32).toString('hex');
+    const passwordHash = await hashPassword(randomSecret);
+
+    user = await User.create({
+      email: email.toLowerCase(),
+      passwordHash,
+      name,
+      status: UserStatus.ACTIVE,
+      emailVerified: true,
+    });
+
+    logger.info('New user provisioned via SSO', {
+      userId: user._id,
+      email: user.email,
+      provider,
+    });
+  }
+
+  // Ensure membership in organization
+  let membership = await OrganizationMember.findOne({
+    userId: user._id,
+    organizationId: organization._id,
+  });
+
+  if (!membership) {
+    membership = await OrganizationMember.create({
+      organizationId: organization._id,
+      userId: user._id,
+      role: UserRole.REVIEWER,
+      permissions: [],
+    });
+
+    logger.info('User joined organization via SSO', {
+      userId: user._id,
+      organizationId: organization._id,
+      provider,
+    });
+  }
+
+  // Generate tokens
+  const accessToken = generateAccessToken(user._id.toString(), user.email);
+  const refreshToken = generateRefreshToken(user._id.toString(), user.email);
+
+  const refreshTokenExpiry = new Date();
+  refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 7);
+
+  await RefreshToken.create({
+    userId: user._id,
+    tokenHash: hashToken(refreshToken),
+    expiresAt: refreshTokenExpiry,
+    revoked: false,
+    userAgent,
+    ipAddress,
+  });
+
+  user.lastLoginAt = new Date();
+  await user.save();
+
+  logger.info('User logged in via SSO successfully', {
+    userId: user._id,
+    email: user.email,
+    provider,
+    organizationId: organization._id,
+  });
+
+  return {
+    user: {
+      id: user._id.toString(),
+      email: user.email,
+      name: user.name,
+      status: user.status,
+    },
+    organization: {
+      id: organization._id.toString(),
+      name: organization.name,
+      slug: organization.slug,
+    },
+    tokens: {
+      accessToken,
+      refreshToken,
+    },
   };
 };

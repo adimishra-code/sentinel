@@ -24,7 +24,7 @@ describe('validate middleware', () => {
     } as unknown as Request;
 
     const res = mockResponse();
-    const next = vi.fn() as NextFunction;
+    const next = vi.fn() as unknown as NextFunction;
 
     const middleware = validateBody(schema);
     await middleware(req, res, next);
@@ -46,7 +46,7 @@ describe('validate middleware', () => {
     } as unknown as Request;
 
     const res = mockResponse();
-    const next = vi.fn() as NextFunction;
+    const next = vi.fn() as unknown as NextFunction;
 
     const middleware = validateBody(schema);
     await middleware(req, res, next);
@@ -77,7 +77,7 @@ describe('validate middleware', () => {
     } as unknown as Request;
 
     const res = mockResponse();
-    const next = vi.fn() as NextFunction;
+    const next = vi.fn() as unknown as NextFunction;
 
     const middleware = validateQuery(querySchema);
     await middleware(req, res, next);

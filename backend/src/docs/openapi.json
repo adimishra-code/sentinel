@@ -1,0 +1,217 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sentinel Trust & Safety Platform API",
+    "version": "1.0.0",
+    "description": "Multi-tenant AI Trust & Safety Operations Platform API. Provides deterministic and LLM-assisted content moderation, case management, policy lifecycle control, and real-time event webhooks."
+  },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "API v1 Endpoint"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "Format: ApiKey <your_api_key>"
+      }
+    },
+    "schemas": {
+      "ModerateRequest": {
+        "type": "object",
+        "required": ["contentType"],
+        "properties": {
+          "contentType": {
+            "type": "string",
+            "enum": ["text", "image", "url", "mixed"]
+          },
+          "text": { "type": "string", "maxLength": 50000 },
+          "authorId": { "type": "string" },
+          "targetId": { "type": "string" },
+          "conversationId": { "type": "string" },
+          "sourcePlatform": { "type": "string" }
+        }
+      },
+      "ModerationResult": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["allow", "allow_and_monitor", "warn", "limit", "remove", "review", "escalate", "suspend"]
+          },
+          "riskScore": { "type": "number", "minimum": 0, "maximum": 1 },
+          "categories": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "requiresHumanReview": { "type": "boolean" },
+          "contentId": { "type": "string" },
+          "caseId": { "type": "string" }
+        }
+      },
+      "Case": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in_review", "resolved", "escalated", "dismissed"]
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "riskScore": { "type": "number" },
+          "categories": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  },
+  "security": [
+    { "BearerAuth": [] },
+    { "ApiKeyAuth": [] }
+  ],
+  "paths": {
+    "/moderate": {
+      "post": {
+        "summary": "Moderate content",
+        "description": "Evaluates submitted content against deterministic detection patterns, active organization policy, and AI analysis.",
+        "parameters": [
+          {
+            "name": "async",
+            "in": "query",
+            "schema": { "type": "boolean" },
+            "description": "Set to true to enqueue processing and return 202 Accepted immediately"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ModerateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Synchronous moderation verdict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": { "$ref": "#/components/schemas/ModerationResult" }
+                  }
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Asynchronous job enqueued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "status": { "type": "string", "example": "queued" },
+                    "jobId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/moderate/jobs/{jobId}": {
+      "get": {
+        "summary": "Check async moderation job status",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Job status and result" },
+          "404": { "description": "Job not found" }
+        }
+      }
+    },
+    "/cases": {
+      "get": {
+        "summary": "List moderation queue cases",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "priority", "in": "query", "schema": { "type": "string" } },
+          { "name": "cursor", "in": "query", "schema": { "type": "string" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "List of moderation cases with pagination" }
+        }
+      }
+    },
+    "/cases/{id}/resolve": {
+      "post": {
+        "summary": "Resolve case",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["action", "rationale"],
+                "properties": {
+                  "action": { "type": "string", "enum": ["allow", "warn", "remove", "escalate"] },
+                  "rationale": { "type": "string", "minLength": 10 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Case resolved" }
+        }
+      }
+    },
+    "/policies": {
+      "get": {
+        "summary": "List organization policies",
+        "responses": { "200": { "description": "Active and draft policies" } }
+      },
+      "post": {
+        "summary": "Create new policy",
+        "responses": { "201": { "description": "Policy created" } }
+      }
+    },
+    "/organizations/{id}/export": {
+      "get": {
+        "summary": "Export all organization data (GDPR / SAR)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Complete JSON archive of cases, policies, webhooks, and audit logs" }
+        }
+      }
+    }
+  }
+}

@@ -57,4 +57,20 @@ router.patch(
   organizationsController.updateMember
 );
 
+// Export organization data (GDPR)
+router.get(
+  '/:id/export',
+  validateParams(IdParamSchema),
+  requirePermission(PERMISSIONS.ORG_WRITE),
+  organizationsController.exportOrganization
+);
+
+// Delete organization (GDPR Right to Erasure)
+router.delete(
+  '/:id',
+  validateParams(IdParamSchema),
+  requirePermission(PERMISSIONS.ORG_WRITE),
+  organizationsController.deleteOrganization
+);
+
 export default router;

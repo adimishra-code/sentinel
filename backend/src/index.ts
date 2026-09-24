@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 import { createServer } from 'http';
 import { initializeSocket } from './utils/socket';
 import { getRedisClient, closeRedis } from './utils/redis';
-import { startModerationWorker, closeQueue } from './utils/queue';
+import { startModerationWorker, startWebhookWorker, closeQueue } from './utils/queue';
 
 // Initialize Sentry before everything else if DSN is provided
 if (process.env.SENTRY_DSN) {
@@ -61,12 +61,13 @@ const startServer = async () => {
     await connectDatabase();
     await connectRedis();
 
-    // Start async moderation queue worker
+    // Start async moderation queue worker & webhook retry worker
     try {
       startModerationWorker();
-      logger.info('BullMQ moderation worker initialized');
+      startWebhookWorker();
+      logger.info('BullMQ workers initialized');
     } catch (queueErr) {
-      logger.warn('Failed to start BullMQ moderation worker', { error: queueErr });
+      logger.warn('Failed to start BullMQ workers', { error: queueErr });
     }
 
     // Create HTTP server and initialize Socket.IO

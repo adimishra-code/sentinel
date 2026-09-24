@@ -53,7 +53,7 @@ describe('rateLimitByOrg middleware', () => {
     } as unknown as Request;
 
     const { res, headers } = mockResponse();
-    const next = vi.fn() as NextFunction;
+    const next = vi.fn() as unknown as NextFunction;
 
     await middleware(req, res, next);
 
@@ -72,7 +72,7 @@ describe('rateLimitByOrg middleware', () => {
       socket: {},
     } as unknown as Request;
 
-    const next = vi.fn() as NextFunction;
+    const next = vi.fn() as unknown as NextFunction;
 
     // Send 2 requests
     const res1 = mockResponse();
