@@ -31,7 +31,6 @@ const apiKeySchema = new Schema<IApiKey>(
       type: String,
       required: true,
       unique: true,
-      index: true,
     },
     keyPrefix: {
       type: String,
@@ -49,7 +48,6 @@ const apiKeySchema = new Schema<IApiKey>(
     },
     expiresAt: {
       type: Date,
-      index: true,
     },
     lastUsedAt: {
       type: Date,

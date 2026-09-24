@@ -19,10 +19,10 @@ CMD ["npm", "run", "dev"]
 
 # Production build stage
 FROM base AS builder
-ENV NODE_ENV=production
-RUN npm ci --only=production
 COPY . .
+RUN npm ci
 RUN npm run build
+RUN npm prune --production
 
 # Production stage
 FROM node:20-alpine AS production
