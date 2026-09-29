@@ -1,10 +1,12 @@
 import { useState, useMemo } from 'react';
-import { Search, Plus, ChevronDown } from 'lucide-react';
+import { Search, Plus, ChevronDown, CheckSquare, Square, Trash2, UserCheck, X } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { clsx } from 'clsx';
 import { NavLink } from 'react-router-dom';
 import { useCases } from '../hooks/queries';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { casesApi } from '../services/api';
 
 interface Case {
   id: string;
@@ -41,6 +43,10 @@ export function CasesPage() {
   const [sortBy, setSortBy] = useState<'created' | 'severity' | 'riskScore'>('created');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useCases({
     page,
@@ -64,8 +70,8 @@ export function CasesPage() {
         return true;
       })
       .sort((a, b) => {
-        let aVal: any = a[sortBy];
-        let bVal: any = b[sortBy];
+        let aVal: any = (a as any)[sortBy];
+        let bVal: any = (b as any)[sortBy];
         if (sortBy === 'created') {
           aVal = new Date(aVal).getTime();
           bVal = new Date(bVal).getTime();
@@ -78,23 +84,38 @@ export function CasesPage() {
       });
   }, [cases, search, severityFilter, statusFilter, sortBy, sortOrder]);
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearch(e.target.value);
-    setPage(1);
+  const bulkAction = useMutation({
+    mutationFn: (payload: { operation: 'assign' | 'dismiss'; moderatorId?: string }) =>
+      (casesApi as any).bulk({
+        caseIds: Array.from(selected),
+        ...payload,
+      }),
+    onSuccess: () => {
+      setSelected(new Set());
+      setBulkError(null);
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+    },
+    onError: (err: any) => {
+      setBulkError(err?.message || 'Bulk action failed');
+    },
+  });
+
+  const allSelected = filteredCases.length > 0 && filteredCases.every((c: Case) => selected.has(c.id));
+  const someSelected = selected.size > 0;
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filteredCases.map((c: Case) => c.id)));
+    }
   };
 
-  const handleSeverityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSeverityFilter(e.target.value);
-    setPage(1);
-  };
-
-  const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setStatusFilter(e.target.value);
-    setPage(1);
-  };
-
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage);
+  const toggleOne = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
   };
 
   return (
@@ -111,6 +132,42 @@ export function CasesPage() {
         </NavLink>
       </div>
 
+      {/* Bulk action toolbar */}
+      {someSelected && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-brand-50 border border-brand-200 rounded-lg">
+          <span className="text-body-sm font-medium text-brand-800">
+            {selected.size} selected
+          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={() => bulkAction.mutate({ operation: 'dismiss' })}
+              disabled={bulkAction.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-body-sm font-medium bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Dismiss
+            </button>
+            <button
+              onClick={() => bulkAction.mutate({ operation: 'assign', moderatorId: 'me' })}
+              disabled={bulkAction.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-body-sm font-medium bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-50 transition-colors disabled:opacity-50"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              Assign to me
+            </button>
+            <button
+              onClick={() => setSelected(new Set())}
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {bulkError && (
+            <p className="text-body-xs text-red-600">{bulkError}</p>
+          )}
+        </div>
+      )}
+
       {/* Filters */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row gap-4">
@@ -120,7 +177,7 @@ export function CasesPage() {
               type="text"
               placeholder="Search cases..."
               value={search}
-              onChange={handleSearch}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               className="input pl-10"
             />
           </div>
@@ -128,7 +185,7 @@ export function CasesPage() {
           <div className="flex flex-wrap gap-3">
             <select
               value={severityFilter}
-              onChange={handleSeverityChange}
+              onChange={(e) => { setSeverityFilter(e.target.value); setPage(1); }}
               className="input w-auto min-w-[160px]"
             >
               <option value="">All Severities</option>
@@ -140,7 +197,7 @@ export function CasesPage() {
 
             <select
               value={statusFilter}
-              onChange={handleStatusChange}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
               className="input w-auto min-w-[160px]"
             >
               <option value="">All Statuses</option>
@@ -180,6 +237,13 @@ export function CasesPage() {
           <table className="table">
             <thead>
               <tr>
+                <th className="w-10">
+                  <button onClick={toggleAll} className="p-0.5 text-neutral-400 hover:text-neutral-700">
+                    {allSelected
+                      ? <CheckSquare className="w-4 h-4 text-brand-600" />
+                      : <Square className="w-4 h-4" />}
+                  </button>
+                </th>
                 <th className="w-32">Case ID</th>
                 <th>Content Preview</th>
                 <th className="w-36">Severity</th>
@@ -195,23 +259,27 @@ export function CasesPage() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td><div className="h-4 w-20 bg-neutral-200 animate-pulse rounded" /></td>
-                    <td><div className="h-4 w-40 bg-neutral-200 animate-pulse rounded" /></td>
-                    <td><div className="h-5 w-16 bg-neutral-200 animate-pulse rounded-full" /></td>
-                    <td><div className="h-4 w-20 bg-neutral-200 animate-pulse rounded" /></td>
-                    <td><div className="h-4 w-20 bg-neutral-200 animate-pulse rounded" /></td>
-                    <td><div className="h-4 w-24 bg-neutral-200 animate-pulse rounded" /></td>
-                    <td><div className="h-4 w-16 bg-neutral-200 animate-pulse rounded" /></td>
-                    <td><div className="h-4 w-24 bg-neutral-200 animate-pulse rounded" /></td>
-                    <td></td>
+                    {Array.from({ length: 10 }).map((_, j) => (
+                      <td key={j}><div className="h-4 w-full max-w-[100px] bg-neutral-200 animate-pulse rounded" /></td>
+                    ))}
                   </tr>
                 ))
               ) : filteredCases.length > 0 ? (
                 filteredCases.map((case_: Case) => (
-                  <tr key={case_.id}>
+                  <tr key={case_.id} className={clsx(selected.has(case_.id) && 'bg-brand-50/30')}>
+                    <td>
+                      <button
+                        onClick={() => toggleOne(case_.id)}
+                        className="p-0.5 text-neutral-400 hover:text-neutral-700"
+                      >
+                        {selected.has(case_.id)
+                          ? <CheckSquare className="w-4 h-4 text-brand-600" />
+                          : <Square className="w-4 h-4" />}
+                      </button>
+                    </td>
                     <td className="font-mono text-body-sm font-medium">
                       <NavLink to={`/cases/${case_.id}`} className="text-brand-700 hover:text-brand-800">
-                        {case_.id}
+                        {case_.id.slice(-8)}
                       </NavLink>
                     </td>
                     <td className="max-w-md truncate">{case_.contentPreview || case_.text || 'No preview'}</td>
@@ -228,10 +296,12 @@ export function CasesPage() {
                         {case_.status?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Unknown'}
                       </Badge>
                     </td>
-                    <td className="text-body-sm text-neutral-600">{case_.assignedTo || 'Unassigned'}</td>
-                    <td className="font-mono text-body-sm font-medium text-neutral-900">{case_.riskScore || 0}</td>
+                    <td className="text-body-sm text-neutral-600">{(case_.assignedTo as any)?.name || 'Unassigned'}</td>
+                    <td className="font-mono text-body-sm font-medium text-neutral-900">
+                      {Math.round((case_.riskScore || 0) * 100)}%
+                    </td>
                     <td className="text-body-sm text-neutral-500">
-                      {case_.createdAt ? new Date(case_.createdAt).toLocaleString() : 'Unknown'}
+                      {case_.createdAt ? new Date(case_.createdAt).toLocaleDateString() : 'Unknown'}
                     </td>
                     <td>
                       <NavLink to={`/cases/${case_.id}`} className="text-brand-700 hover:text-brand-800 font-medium text-body-sm">
@@ -242,7 +312,7 @@ export function CasesPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-neutral-500">
+                  <td colSpan={10} className="text-center py-8 text-neutral-500">
                     No cases found
                   </td>
                 </tr>
@@ -255,20 +325,21 @@ export function CasesPage() {
         {meta && (
           <div className="px-5 py-4 border-t border-neutral-200 flex items-center justify-between">
             <p className="text-body-sm text-neutral-500">
-              Showing {meta.page * meta.limit - meta.limit + 1} to {Math.min(meta.page * meta.limit, meta.total)} of {meta.total} cases
+              Showing {meta.page * meta.limit - meta.limit + 1} to{' '}
+              {Math.min(meta.page * meta.limit, meta.total)} of {meta.total} cases
             </p>
             <div className="flex items-center gap-2">
               <button
-                className="btn-secondary btn-sm"
+                className="btn-secondary btn-sm disabled:opacity-40"
                 disabled={meta.page <= 1}
-                onClick={() => handlePageChange(meta.page - 1)}
+                onClick={() => setPage(meta.page - 1)}
               >
                 Previous
               </button>
               <button
-                className="btn-secondary btn-sm"
+                className="btn-secondary btn-sm disabled:opacity-40"
                 disabled={meta.page >= meta.totalPages}
-                onClick={() => handlePageChange(meta.page + 1)}
+                onClick={() => setPage(meta.page + 1)}
               >
                 Next
               </button>

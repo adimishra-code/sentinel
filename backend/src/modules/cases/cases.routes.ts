@@ -49,4 +49,11 @@ router.post(
   casesController.resolveCase
 );
 
+// Bulk update cases (assign or dismiss multiple)
+router.post(
+  '/bulk',
+  requirePermission(PERMISSIONS.CASE_RESOLVE),
+  casesController.bulkUpdateCases
+);
+
 export default router;

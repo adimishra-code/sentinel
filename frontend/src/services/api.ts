@@ -85,6 +85,8 @@ export const casesApi = {
   assign: (id: string) => api.post<any>(`/cases/${id}/assign`, {}),
   resolve: (id: string, data: { action: string; rationale: string }) =>
     api.post<any>(`/cases/${id}/resolve`, data),
+  bulk: (data: { caseIds: string[]; operation: 'assign' | 'dismiss'; moderatorId?: string }) =>
+    api.post<{ updated: number }>('/cases/bulk', data),
 };
 
 export const analyticsApi = {

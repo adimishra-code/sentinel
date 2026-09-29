@@ -314,3 +314,47 @@ export const resolveCase = async (
 
   return caseDoc;
 };
+
+/**
+ * Bulk update cases (assign or dismiss multiple at once)
+ */
+export const bulkUpdateCases = async (
+  caseIds: string[],
+  organizationId: string,
+  operation: 'assign' | 'dismiss',
+  options: { moderatorId?: string }
+) => {
+  if (caseIds.length === 0) return { updated: 0 };
+
+  if (operation === 'assign' && !options.moderatorId) {
+    throw new Error('moderatorId required for assign operation');
+  }
+
+  let update: Record<string, any> = {};
+  if (operation === 'assign') {
+    update = {
+      assignedTo: options.moderatorId,
+      assignedAt: new Date(),
+      status: CaseStatus.IN_REVIEW,
+    };
+  } else if (operation === 'dismiss') {
+    update = {
+      status: CaseStatus.RESOLVED,
+      resolvedAt: new Date(),
+    };
+  }
+
+  const result = await Case.updateMany(
+    { _id: { $in: caseIds }, organizationId },
+    { $set: update }
+  );
+
+  logger.info('Bulk cases updated', {
+    operation,
+    count: result.modifiedCount,
+    organizationId,
+  });
+
+  return { updated: result.modifiedCount };
+};
+

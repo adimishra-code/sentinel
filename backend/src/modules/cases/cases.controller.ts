@@ -128,3 +128,41 @@ export const resolveCase = asyncHandler(async (req: Request, res: Response) => {
     },
   });
 });
+
+const BulkUpdateSchema = z.object({
+  caseIds: z.array(z.string().min(1)).min(1).max(100),
+  operation: z.enum(['assign', 'dismiss']),
+  moderatorId: z.string().optional(),
+});
+
+/**
+ * Bulk update cases
+ * POST /api/v1/cases/bulk
+ */
+export const bulkUpdateCases = asyncHandler(async (req: Request, res: Response) => {
+  const { caseIds, operation, moderatorId } = BulkUpdateSchema.parse(req.body);
+
+  if (!req.organizationId) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Organization ID required' },
+    });
+  }
+
+  const result = await casesService.bulkUpdateCases(
+    caseIds,
+    req.organizationId,
+    operation,
+    { moderatorId }
+  );
+
+  res.status(200).json({
+    success: true,
+    data: result,
+    meta: {
+      requestId: (req as any).requestId,
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
