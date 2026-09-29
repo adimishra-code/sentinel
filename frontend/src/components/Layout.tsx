@@ -11,10 +11,10 @@ import {
   User,
   BarChart2,
   Shield,
-  Bell,
 } from 'lucide-react';
 import { useState } from 'react';
 import { clsx } from 'clsx';
+import { NotificationDropdown } from './NotificationDropdown';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -124,15 +124,8 @@ export function Layout() {
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Notifications bell */}
-              <button
-                id="notifications-btn"
-                type="button"
-                className="relative p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 transition-colors"
-                aria-label="Notifications"
-              >
-                <Bell className="w-5 h-5" aria-hidden="true" />
-              </button>
+              {/* Notifications */}
+              <NotificationDropdown />
 
               {/* User menu */}
               <div className="relative">
