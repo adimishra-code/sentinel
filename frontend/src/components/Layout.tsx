@@ -11,6 +11,7 @@ import {
   User,
   BarChart2,
   Shield,
+  Scale,
 } from 'lucide-react';
 import { useState } from 'react';
 import { clsx } from 'clsx';
@@ -19,6 +20,7 @@ import { NotificationDropdown } from './NotificationDropdown';
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Cases', href: '/cases', icon: FileText },
+  { name: 'Appeals', href: '/appeals', icon: Scale },
   { name: 'Analytics', href: '/analytics', icon: BarChart2 },
   { name: 'Policies', href: '/policies', icon: Shield },
   { name: 'Settings', href: '/settings', icon: Settings },

@@ -135,3 +135,42 @@ export const integrationsApi = {
   deleteWebhook: (id: string) => api.delete<void>(`/integrations/webhooks/${id}`),
   getDeliveries: (id: string) => api.get<any[]>(`/integrations/webhooks/${id}/deliveries`),
 };
+
+export const appealsApi = {
+  list: (params?: { status?: string; page?: number; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) search.append(key, String(value));
+      });
+    }
+    return api.get<{ items: any[]; pagination: any }>(`/appeals?${search.toString()}`);
+  },
+  get: (id: string) => api.get<any>(`/appeals/${id}`),
+  create: (data: { caseId: string; reason: string; evidence?: string }) =>
+    api.post<any>('/appeals', data),
+  resolve: (id: string, data: { outcome: string; reviewerNotes: string }) =>
+    api.post<any>(`/appeals/${id}/resolve`, data),
+};
+
+export const moderationApi = {
+  submit: (data: {
+    contentType: string;
+    text?: string;
+    imageUrls?: string[];
+    urls?: string[];
+    authorId?: string;
+    sourcePlatform?: string;
+    metadata?: Record<string, unknown>;
+  }) => api.post<any>('/moderate', data),
+  getContent: (id: string) => api.get<any>(`/content/${id}`),
+  listContent: (params?: { page?: number; limit?: number; contentType?: string }) => {
+    const search = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) search.append(key, String(value));
+      });
+    }
+    return api.get<any>(`/content?${search.toString()}`);
+  },
+};
