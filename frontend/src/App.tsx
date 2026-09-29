@@ -7,6 +7,7 @@ import { CaseDetailPage } from './pages/CaseDetailPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { PoliciesPage } from './pages/PoliciesPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ContentSubmitPage } from './pages/ContentSubmitPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { useAuthStore } from './stores/authStore';
 
@@ -60,6 +61,7 @@ export default function App() {
         >
           <Route index element={<DashboardPage />} />
           <Route path="cases" element={<CasesPage />} />
+          <Route path="cases/new" element={<ContentSubmitPage />} />
           <Route path="cases/:id" element={<CaseDetailPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="policies" element={<PoliciesPage />} />
