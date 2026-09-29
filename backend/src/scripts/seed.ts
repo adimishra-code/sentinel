@@ -11,6 +11,7 @@ import { ApiKey } from '../modules/auth/api-key.model';
 import { Policy, PolicyVersion } from '../modules/policies/policy.model';
 import { Case } from '../modules/cases/case.model';
 import { Content } from '../modules/content/content.model';
+import { AuditLog } from '../modules/audit/audit-log.model';
 import { hashPassword } from '../modules/auth/auth.utils';
 import { UserRole, UserStatus, PolicyStatus, CaseStatus, CasePriority, ContentType } from '../types';
 
@@ -223,6 +224,60 @@ async function seed() {
         });
       }
       console.log(`✅ Seeded ${demoContents.length} demo moderation cases`);
+    }
+
+    // 7. Seed Demo Audit Logs if none exist
+    const existingAuditCount = await AuditLog.countDocuments({ organizationId: org._id });
+    if (existingAuditCount === 0) {
+      const demoAuditLogs = [
+        {
+          organizationId: org._id,
+          action: 'auth.login',
+          actorId: adminUser._id.toString(),
+          actorType: 'user',
+          entityType: 'user',
+          entityId: adminUser._id.toString(),
+          metadata: { provider: 'password', mfa: false },
+          ipAddress: '192.168.1.101',
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        },
+        {
+          organizationId: org._id,
+          action: 'policy.activated',
+          actorId: adminUser._id.toString(),
+          actorType: 'user',
+          entityType: 'policy',
+          entityId: 'global_trust_safety_v1',
+          metadata: { version: '1.0.0', rulesCount: 4 },
+          ipAddress: '192.168.1.101',
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        },
+        {
+          organizationId: org._id,
+          action: 'api_key.created',
+          actorId: adminUser._id.toString(),
+          actorType: 'user',
+          entityType: 'api_key',
+          entityId: 'live_seed_key',
+          metadata: { keyPrefix: 'sk_live_sentinel' },
+          ipAddress: '192.168.1.101',
+        },
+        {
+          organizationId: org._id,
+          action: 'case.resolved',
+          actorId: adminUser._id.toString(),
+          actorType: 'user',
+          entityType: 'case',
+          entityId: 'case_demo_resolution',
+          changes: { action: 'warn', rationale: 'Content violates community profanity guidelines.' },
+          ipAddress: '192.168.1.101',
+        },
+      ];
+
+      for (const log of demoAuditLogs) {
+        await AuditLog.create(log);
+      }
+      console.log(`✅ Seeded ${demoAuditLogs.length} initial enterprise audit events`);
     }
 
     console.log('\n============================================================');

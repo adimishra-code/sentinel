@@ -9,6 +9,7 @@ import { PoliciesPage } from './pages/PoliciesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ContentSubmitPage } from './pages/ContentSubmitPage';
 import { AppealsPage } from './pages/AppealsPage';
+import { AuditLogsPage } from './pages/AuditLogsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { useAuthStore } from './stores/authStore';
 
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="policies" element={<PoliciesPage />} />
           <Route path="appeals" element={<AppealsPage />} />
+          <Route path="audit" element={<AuditLogsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

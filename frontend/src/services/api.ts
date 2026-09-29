@@ -178,3 +178,26 @@ export const moderationApi = {
     return api.get<any>(`/content?${search.toString()}`);
   },
 };
+
+export const auditApi = {
+  list: (params?: {
+    action?: string;
+    actorId?: string;
+    entityType?: string;
+    entityId?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const search = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') search.append(key, String(value));
+      });
+    }
+    return api.get<{ items: any[]; pagination: any }>(`/audit?${search.toString()}`);
+  },
+  getEntityTrail: (entityType: string, entityId: string) =>
+    api.get<any[]>(`/audit/${entityType}/${entityId}`),
+};

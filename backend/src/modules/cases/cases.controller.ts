@@ -3,6 +3,7 @@ import { asyncHandler } from '../../middleware/errorHandler';
 import * as casesService from './cases.service';
 import { z } from 'zod';
 import { CaseStatus, CasePriority, ModerationAction } from '../../types';
+import { logAudit } from '../../utils/audit';
 
 const ListCasesSchema = z.object({
   status: z.nativeEnum(CaseStatus).optional(),
@@ -85,6 +86,7 @@ export const assignCase = asyncHandler(async (req: Request, res: Response) => {
   }
 
   await casesService.assignCase(id, moderatorId, req.organizationId);
+  await logAudit(req, 'case.assigned', 'case', id, undefined, { moderatorId });
 
   res.status(200).json({
     success: true,
@@ -118,6 +120,10 @@ export const resolveCase = asyncHandler(async (req: Request, res: Response) => {
   }
 
   await casesService.resolveCase(id, req.userId, req.organizationId, decision);
+  await logAudit(req, 'case.resolved', 'case', id, {
+    action: decision.action,
+    rationale: decision.rationale,
+  });
 
   res.status(200).json({
     success: true,
@@ -155,6 +161,12 @@ export const bulkUpdateCases = asyncHandler(async (req: Request, res: Response) 
     operation,
     { moderatorId }
   );
+
+  await logAudit(req, `case.bulk_${operation}`, 'case', caseIds[0], undefined, {
+    count: caseIds.length,
+    caseIds,
+    moderatorId,
+  });
 
   res.status(200).json({
     success: true,

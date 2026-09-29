@@ -13,11 +13,13 @@ import {
   getPolicyVersions,
 } from './policies.service';
 import { PolicyStatus } from '../../types';
+import { logAudit } from '../../utils/audit';
 
 export const handleCreatePolicy = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { organizationId } = req;
     const policy = await createPolicy(organizationId!, req.body);
+    await logAudit(req, 'policy.created', 'policy', (policy as any)._id?.toString() || (policy as any).id, undefined, { name: req.body.name });
     res.status(201).json({ success: true, data: policy });
   } catch (err) {
     next(err);
@@ -53,6 +55,7 @@ export const handleUpdatePolicy = async (req: Request, res: Response, next: Next
   try {
     const { organizationId } = req;
     const policy = await updatePolicy(req.params.id, organizationId!, req.body);
+    await logAudit(req, 'policy.updated', 'policy', req.params.id, req.body);
     res.json({ success: true, data: policy });
   } catch (err) {
     next(err);
@@ -63,6 +66,7 @@ export const handleActivatePolicy = async (req: Request, res: Response, next: Ne
   try {
     const { organizationId } = req;
     const policy = await activatePolicy(req.params.id, organizationId!);
+    await logAudit(req, 'policy.activated', 'policy', req.params.id);
     res.json({ success: true, data: policy });
   } catch (err) {
     next(err);
@@ -73,6 +77,7 @@ export const handleArchivePolicy = async (req: Request, res: Response, next: Nex
   try {
     const { organizationId } = req;
     const policy = await archivePolicy(req.params.id, organizationId!);
+    await logAudit(req, 'policy.archived', 'policy', req.params.id);
     res.json({ success: true, data: policy });
   } catch (err) {
     next(err);

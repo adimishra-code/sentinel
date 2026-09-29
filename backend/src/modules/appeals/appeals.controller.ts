@@ -3,6 +3,7 @@ import { asyncHandler } from '../../middleware/errorHandler';
 import * as appealsService from './appeals.service';
 import { z } from 'zod';
 import { AppealStatus } from '../../types';
+import { logAudit } from '../../utils/audit';
 
 const CreateAppealSchema = z.object({
   caseId: z.string().min(1),
@@ -24,6 +25,7 @@ export const createAppeal = asyncHandler(async (req: Request, res: Response) => 
   }
 
   const appeal = await appealsService.createAppeal(caseId, req.userId, req.organizationId, reason);
+  await logAudit(req, 'appeal.created', 'appeal', appeal._id.toString(), undefined, { caseId, reason });
 
   res.status(201).json({
     success: true,
@@ -120,6 +122,10 @@ export const resolveAppeal = asyncHandler(async (req: Request, res: Response) =>
   }
 
   await appealsService.resolveAppeal(id, req.userId, req.organizationId, resolution);
+  await logAudit(req, 'appeal.resolved', 'appeal', id, {
+    status: resolution.status,
+    rationale: resolution.outcomeRationale,
+  });
 
   res.status(200).json({
     success: true,
