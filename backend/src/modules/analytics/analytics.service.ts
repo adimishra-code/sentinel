@@ -265,3 +265,66 @@ export const getDashboardOverview = async (
     categories: categories.slice(0, 10), // Top 10
   };
 };
+
+/**
+ * Get daily timeseries for cases and content over last N days
+ */
+export const getTimeseries = async (
+  organizationId: string,
+  days: number = 30
+) => {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+
+  const [casesByDay, contentByDay] = await Promise.all([
+    Case.aggregate([
+      { $match: { organizationId, createdAt: { $gte: since } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          cases: { $sum: 1 },
+          resolved: {
+            $sum: { $cond: [{ $eq: ['$status', 'resolved'] }, 1, 0] },
+          },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
+    Content.aggregate([
+      { $match: { organizationId, createdAt: { $gte: since } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          content: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
+  ]);
+
+  // Build date index
+  const dataByDate: Record<string, { date: string; cases: number; resolved: number; content: number }> = {};
+  const cursor = new Date(since);
+  for (let i = 0; i <= days; i++) {
+    const key = cursor.toISOString().slice(0, 10);
+    dataByDate[key] = { date: key, cases: 0, resolved: 0, content: 0 };
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  casesByDay.forEach((r) => {
+    if (dataByDate[r._id]) {
+      dataByDate[r._id].cases = r.cases;
+      dataByDate[r._id].resolved = r.resolved;
+    }
+  });
+
+  contentByDay.forEach((r) => {
+    if (dataByDate[r._id]) {
+      dataByDate[r._id].content = r.content;
+    }
+  });
+
+  return Object.values(dataByDate);
+};
+

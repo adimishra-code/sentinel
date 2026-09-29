@@ -96,6 +96,8 @@ export const analyticsApi = {
   getDecisions: () => api.get<any>('/analytics/decisions'),
   getAppeals: () => api.get<any>('/analytics/appeals'),
   getCategories: () => api.get<any>('/analytics/categories'),
+  getTimeseries: (days?: number) =>
+    api.get<any[]>(`/analytics/timeseries${days ? `?days=${days}` : ''}`),
 };
 
 export const policiesApi = {

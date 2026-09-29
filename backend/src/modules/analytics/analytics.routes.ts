@@ -27,4 +27,7 @@ router.get('/appeals', analyticsController.getAppealAnalytics);
 // Category distribution
 router.get('/categories', analyticsController.getCategoryDistribution);
 
+// Daily timeseries
+router.get('/timeseries', analyticsController.getTimeseries);
+
 export default router;

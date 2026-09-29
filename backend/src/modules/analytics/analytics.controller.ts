@@ -163,3 +163,34 @@ export const getCategoryDistribution = asyncHandler(async (req: Request, res: Re
     },
   });
 });
+
+const TimeseriesQuerySchema = z.object({
+  days: z.coerce.number().int().min(7).max(90).default(30),
+});
+
+/**
+ * Get daily timeseries data
+ * GET /api/v1/analytics/timeseries
+ */
+export const getTimeseries = asyncHandler(async (req: Request, res: Response) => {
+  const { days } = TimeseriesQuerySchema.parse(req.query);
+
+  if (!req.organizationId) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'BAD_REQUEST', message: 'Organization ID required' },
+    });
+  }
+
+  const data = await analyticsService.getTimeseries(req.organizationId, days);
+
+  res.status(200).json({
+    success: true,
+    data,
+    meta: {
+      requestId: (req as any).requestId,
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
