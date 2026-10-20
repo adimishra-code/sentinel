@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { SocketProvider } from './SocketProvider';
 import {
   LayoutDashboard,
   FileText,
@@ -180,7 +181,9 @@ export function Layout() {
 
         {/* Page content */}
         <main className="p-4 lg:p-6" id="main-content" tabIndex={-1}>
-          <Outlet />
+          <SocketProvider>
+            <Outlet />
+          </SocketProvider>
         </main>
       </div>
     </div>

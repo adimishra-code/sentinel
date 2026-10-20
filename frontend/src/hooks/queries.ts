@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { authApi, casesApi, analyticsApi } from '../services/api';
+import { authApi, casesApi, analyticsApi, appealsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 
 // Auth hooks
@@ -85,6 +85,30 @@ export function useResolveCase() {
       casesApi.resolve(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cases'] });
+    },
+  });
+}
+
+// Appeal hooks
+export function useAppeal(id: string) {
+  return useQuery({
+    queryKey: ['appeals', id],
+    queryFn: () => appealsApi.get(id),
+    enabled: !!id,
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useResolveAppeal() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { outcome: string; reviewerNotes: string } }) =>
+      appealsApi.resolve(id, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['appeals'] });
+      queryClient.invalidateQueries({ queryKey: ['appeals', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
     },
   });
 }

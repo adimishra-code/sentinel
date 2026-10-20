@@ -136,6 +136,12 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       req.permissions = apiKeyData.permissions;
       req.apiKeyId = apiKeyData.apiKeyId;
 
+      // Record last used at (non-blocking)
+      if (apiKeyData.apiKeyId) {
+        ApiKey.findByIdAndUpdate(apiKeyData.apiKeyId, { lastUsedAt: new Date() })
+          .catch(() => {});
+      }
+
       return next();
     }
 

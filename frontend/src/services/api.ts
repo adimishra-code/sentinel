@@ -140,6 +140,25 @@ export const integrationsApi = {
   getDeliveries: (id: string) => api.get<any[]>(`/integrations/webhooks/${id}/deliveries`),
 };
 
+export const organizationsApi = {
+  get: (id: string) => api.get<any>(`/organizations/${id}`),
+  listMembers: (id: string) => api.get<any[]>(`/organizations/${id}/members`),
+  update: (id: string, data: { name?: string }) => api.patch<any>(`/organizations/${id}`, data),
+  inviteMember: (id: string, data: { email: string; role: string; permissions?: string[] }) =>
+    api.post<any>(`/organizations/${id}/members/invite`, data),
+  removeMember: (id: string, userId: string) =>
+    api.delete<void>(`/organizations/${id}/members/${userId}`),
+  updateMember: (id: string, userId: string, data: { role?: string; permissions?: string[] }) =>
+    api.patch<any>(`/organizations/${id}/members/${userId}`, data),
+};
+
+export const apiKeysApi = {
+  list: () => api.get<any[]>('/api-keys'),
+  create: (data: { name: string; permissions: string[]; expiresInDays?: number }) =>
+    api.post<any>('/api-keys', data),
+  revoke: (id: string) => api.delete<void>(`/api-keys/${id}`),
+};
+
 export const appealsApi = {
   list: (params?: { status?: string; page?: number; limit?: number }) => {
     const search = new URLSearchParams();
@@ -154,7 +173,10 @@ export const appealsApi = {
   create: (data: { caseId: string; reason: string; evidence?: string }) =>
     api.post<any>('/appeals', data),
   resolve: (id: string, data: { outcome: string; reviewerNotes: string }) =>
-    api.post<any>(`/appeals/${id}/resolve`, data),
+    api.post<any>(`/appeals/${id}/resolve`, {
+      status: data.outcome,
+      outcomeRationale: data.reviewerNotes,
+    }),
 };
 
 export const moderationApi = {

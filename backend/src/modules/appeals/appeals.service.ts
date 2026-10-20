@@ -7,9 +7,11 @@ import { Appeal } from './appeal.model';
 import { Case } from '../cases/case.model';
 import { ModerationDecision } from '../cases/moderation-decision.model';
 import { AppError } from '../../middleware/errorHandler';
-import { AppealStatus } from '../../types';
+import { AppealStatus, CaseStatus, ModerationAction } from '../../types';
 import logger from '../../utils/logger';
-import { emitCaseEvent } from '../../utils/socket';
+import { emitCaseEvent, emitUserNotification } from '../../utils/socket';
+import { notify } from '../notifications/notifications.service';
+import { deliverEvent } from '../integrations/integrations.service';
 
 /**
  * Create appeal for a case
@@ -192,6 +194,52 @@ export const resolveAppeal = async (
   appeal.reviewedAt = new Date();
 
   await appeal.save();
+
+  // Update the linked case and content status based on appeal outcome
+  const caseDoc = await Case.findOne({ _id: appeal.caseId, organizationId });
+  if (caseDoc) {
+    if (resolution.status === 'reversed') {
+      // Reopen the case when an appeal is reversed
+      caseDoc.status = CaseStatus.PENDING;
+      caseDoc.resolvedAt = undefined;
+      caseDoc.resolvedBy = undefined;
+      await caseDoc.save();
+    }
+
+    // Emit case updated event for realtime UI refresh
+    emitCaseEvent(organizationId, 'case:updated', {
+      caseId: caseDoc._id.toString(),
+      status: caseDoc.status,
+      appealOutcome: resolution.status,
+    });
+
+    // Deliver webhook for appeal resolved
+    deliverEvent(organizationId, 'appeal.resolved', {
+      appealId: appeal._id.toString(),
+      caseId: caseDoc._id.toString(),
+      outcome: resolution.status,
+      rationale: resolution.outcomeRationale,
+    }).catch(() => {});
+  }
+
+  // Notify the appellant that their appeal was resolved
+  try {
+    await notify({
+      organizationId,
+      userId: appeal.userId.toString(),
+      type: 'appeal_resolved',
+      title: 'Appeal resolved',
+      message: `Your appeal has been ${resolution.status}.`,
+      data: {
+        appealId: appeal._id.toString(),
+        caseId: appeal.caseId ? appeal.caseId.toString() : null,
+        outcome: resolution.status,
+        rationale: resolution.outcomeRationale,
+      },
+    });
+  } catch (notifyErr) {
+    logger.warn('Failed to send appeal resolved notification', { error: notifyErr });
+  }
 
   logger.info('Appeal resolved', {
     appealId,

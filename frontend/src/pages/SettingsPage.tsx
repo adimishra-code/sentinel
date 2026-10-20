@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { User, Bell, Shield, Key, Building, LogOut, Save, Loader2, CheckCircle, Users } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { User, Bell, Shield, Key, Building, LogOut, Save, Loader2, CheckCircle, Users, Plus, Trash2, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Card, CardHeader, CardBody, CardFooter } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { useAuthStore } from '../stores/authStore';
 import { clsx } from 'clsx';
+import { organizationsApi, apiKeysApi } from '../services/api';
 
 const tabs = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -12,6 +13,14 @@ const tabs = [
   { id: 'api-keys', label: 'API Keys', icon: Key },
   { id: 'organization', label: 'Organization', icon: Building },
 ];
+
+const ROLE_LABELS: Record<string, string> = {
+  org_admin: 'Organization Admin',
+  moderator: 'Moderator',
+  reviewer: 'Reviewer',
+  end_user: 'End User',
+  platform_admin: 'Platform Admin',
+};
 
 export function SettingsPage() {
   const { user, updateUser, clearAuth } = useAuthStore();
@@ -22,19 +31,23 @@ export function SettingsPage() {
     email: user?.email || '',
   });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const clearMessages = useCallback(() => {
+    setSuccessMessage(null);
+    setErrorMessage(null);
+  }, []);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    setSuccessMessage(null);
+    clearMessages();
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      updateUser({ name: profileData.name });
+      await updateUser({ name: profileData.name });
       setSuccessMessage('Profile updated successfully');
     } catch (err) {
-      alert('Failed to update profile');
+      setErrorMessage('Failed to update profile');
     } finally {
       setIsSaving(false);
     }
@@ -45,6 +58,182 @@ export function SettingsPage() {
       clearAuth();
     }
   };
+
+  /* ============ API Keys state ============ */
+  const [apiKeys, setApiKeys] = useState<any[]>([]);
+  const [apiKeysLoading, setApiKeysLoading] = useState(false);
+  const [createModal, setCreateModal] = useState(false);
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const [keyName, setKeyName] = useState('');
+  const [keyPermissions, setKeyPermissions] = useState<string[]>(['content:submit']);
+  const [revokingKeyId, setRevokingKeyId] = useState<string | null>(null);
+
+  const loadApiKeys = async () => {
+    setApiKeysLoading(true);
+    try {
+      const data = await apiKeysApi.list();
+      setApiKeys(Array.isArray(data) ? data : (data as any)?.items ?? []);
+    } catch {
+      setErrorMessage('Failed to load API keys');
+    } finally {
+      setApiKeysLoading(false);
+    }
+  };
+
+  const handleCreateKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreatingKey(true);
+    setNewKey(null);
+    clearMessages();
+
+    try {
+      const result = await apiKeysApi.create({
+        name: keyName.trim(),
+        permissions: keyPermissions.filter(Boolean),
+      });
+      const created = result?.data ?? result;
+      setNewKey(created.key ?? null);
+      setKeyName('');
+      setKeyPermissions(['content:submit']);
+      setCreateModal(false);
+      await loadApiKeys();
+      setSuccessMessage('API key created. Copy it now — it will not be shown again.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to create API key');
+    } finally {
+      setCreatingKey(false);
+    }
+  };
+
+  const handleRevokeKey = async (id: string) => {
+    if (!confirm('Revoke this API key? It will stop working immediately.')) return;
+    setRevokingKeyId(id);
+    clearMessages();
+    try {
+      await apiKeysApi.revoke(id);
+      await loadApiKeys();
+      setSuccessMessage('API key revoked.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to revoke API key');
+    } finally {
+      setRevokingKeyId(null);
+    }
+  };
+
+  /* ============ Organization state ============ */
+  const [org, setOrg] = useState<any>(null);
+  const [orgLoading, setOrgLoading] = useState(false);
+  const [members, setMembers] = useState<any[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [editOrgName, setEditOrgName] = useState('');
+  const [savingOrg, setSavingOrg] = useState(false);
+  const [inviteModal, setInviteModal] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'org_admin' | 'moderator' | 'reviewer' | 'end_user'>('moderator');
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+
+  const loadOrganization = async () => {
+    if (!user?.organizationId) return;
+    setOrgLoading(true);
+    try {
+      const data = await organizationsApi.get(user.organizationId);
+      setOrg(data);
+      setEditOrgName(data.name);
+    } catch {
+      setErrorMessage('Failed to load organization');
+    } finally {
+      setOrgLoading(false);
+    }
+  };
+
+  const loadMembers = async () => {
+    if (!user?.organizationId) return;
+    setMembersLoading(true);
+    try {
+      const data = await organizationsApi.listMembers(user.organizationId);
+      setMembers(Array.isArray(data) ? data : (data as any)?.items ?? []);
+    } catch {
+      setErrorMessage('Failed to load members');
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'organization') {
+      loadOrganization();
+      loadMembers();
+    }
+  }, [activeTab, user?.organizationId]);
+
+  const handleSaveOrg = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingOrg(true);
+    clearMessages();
+    try {
+      await organizationsApi.update(user!.organizationId, { name: editOrgName.trim() });
+      if (org) setOrg({ ...org, name: editOrgName.trim() });
+      setSuccessMessage('Organization name updated.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to update organization');
+    } finally {
+      setSavingOrg(false);
+    }
+  };
+
+  const handleInviteMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInviting(true);
+    clearMessages();
+    try {
+      await organizationsApi.inviteMember(user!.organizationId, {
+        email: inviteEmail.trim(),
+        role: inviteRole,
+      });
+      setInviteEmail('');
+      setInviteModal(false);
+      await loadMembers();
+      setSuccessMessage('Invitation sent.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to send invitation');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!confirm('Remove this member from the organization?')) return;
+    setRemovingMemberId(userId);
+    clearMessages();
+    try {
+      await organizationsApi.removeMember(user!.organizationId, userId);
+      await loadMembers();
+      setSuccessMessage('Member removed.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to remove member');
+    } finally {
+      setRemovingMemberId(null);
+    }
+  };
+
+  const handleUpdateMember = async (member: any, role?: string) => {
+    setUpdatingMemberId(member.id);
+    clearMessages();
+    try {
+      await organizationsApi.updateMember(user!.organizationId, member.userId, { role });
+      await loadMembers();
+      setSuccessMessage('Member updated.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to update member');
+    } finally {
+      setUpdatingMemberId(null);
+    }
+  };
+
+  const lastOwner = members.filter((m) => m.role === 'org_admin' || m.role === 'platform_admin').length <= 1;
 
   return (
     <div className="space-y-6">
@@ -60,6 +249,12 @@ export function SettingsPage() {
           <p className="text-body-sm">{successMessage}</p>
         </div>
       )}
+      {errorMessage && (
+        <div className="p-4 bg-status-critical-50 border border-status-critical-200 rounded-lg flex items-center gap-3 text-status-critical-700" role="alert">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+          <p className="text-body-sm">{errorMessage}</p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Sidebar Navigation */}
@@ -71,7 +266,10 @@ export function SettingsPage() {
                   <button
                     role="tab"
                     aria-selected={activeTab === tab.id}
-                    onClick={() => setActiveTab(tab.id as any)}
+                    onClick={() => {
+                      setActiveTab(tab.id as any);
+                      clearMessages();
+                    }}
                     className={clsx(
                       'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-body-sm font-medium transition-colors duration-150 text-left',
                       activeTab === tab.id
@@ -149,7 +347,7 @@ export function SettingsPage() {
                 <div>
                   <label className="label">Role</label>
                   <div className="input-disabled input cursor-default">
-                    <Badge variant="info">{user?.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</Badge>
+                    <Badge variant="info">{ROLE_LABELS[user?.role as string] || user?.role}</Badge>
                   </div>
                 </div>
 
@@ -262,21 +460,94 @@ export function SettingsPage() {
                   <h2 className="text-heading-md font-semibold text-neutral-900">API Keys</h2>
                   <p className="text-body-sm text-neutral-500 mt-1">Manage your API keys for programmatic access</p>
                 </div>
-                <button className="btn-primary btn-sm">
+                <button
+                  className="btn-primary btn-sm"
+                  onClick={() => {
+                    setKeyName('');
+                    setKeyPermissions(['content:submit']);
+                    setNewKey(null);
+                    setCreateModal(true);
+                  }}
+                >
                   <Key className="w-4 h-4 mr-2" />
                   Create API Key
                 </button>
               </CardHeader>
               <CardBody>
-                <div className="empty-state">
-                  <Key className="empty-state-icon w-12 h-12" />
-                  <p className="empty-state-title">No API Keys</p>
-                  <p className="empty-state-description">Create an API key to access Sentinel programmatically.</p>
-                  <button className="btn-primary btn-md mt-4">
-                    <Key className="w-4 h-4 mr-2" />
-                    Create Your First API Key
-                  </button>
-                </div>
+                {apiKeysLoading ? (
+                  <div className="py-10 flex items-center justify-center">
+                    <Loader2 className="w-5 h-5 text-brand-500 animate-spin" />
+                  </div>
+                ) : apiKeys.length === 0 ? (
+                  <div className="empty-state py-8">
+                    <Key className="empty-state-icon w-12 h-12" />
+                    <p className="empty-state-title">No API Keys</p>
+                    <p className="empty-state-description">Create an API key to access Sentinel programmatically.</p>
+                    <button className="btn-primary btn-md mt-4" onClick={() => {
+                      setKeyName('');
+                      setKeyPermissions(['content:submit']);
+                      setNewKey(null);
+                      setCreateModal(true);
+                    }}>
+                      <Key className="w-4 h-4 mr-2" />
+                      Create Your First API Key
+                    </button>
+                  </div>
+                ) : (
+                  <div className="table-container">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Prefix</th>
+                          <th>Permissions</th>
+                          <th>Status</th>
+                          <th>Last Used</th>
+                          <th>Created</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {apiKeys.map((key: any) => (
+                          <tr key={key.id}>
+                            <td className="font-medium text-neutral-900">{key.name}</td>
+                            <td className="font-mono text-body-sm text-neutral-600">{key.keyPrefix}</td>
+                            <td className="text-body-sm text-neutral-700">
+                              {key.permissions?.join(', ') || '—'}
+                            </td>
+                            <td>
+                              <Badge variant={key.status === 'active' ? 'low' : 'neutral'}>
+                                {key.status}
+                              </Badge>
+                            </td>
+                            <td className="text-body-sm text-neutral-600">
+                              {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleDateString() : '—'}
+                            </td>
+                            <td className="text-body-sm text-neutral-600">
+                              {key.createdAt ? new Date(key.createdAt).toLocaleDateString() : '—'}
+                            </td>
+                            <td>
+                              <button
+                                onClick={() => handleRevokeKey(key.id)}
+                                disabled={revokingKeyId === key.id}
+                                className="text-body-sm text-status-critical hover:text-status-critical-900 underline underline-offset-4"
+                              >
+                                {revokingKeyId === key.id ? (
+                                  <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                    Revoking...
+                                  </>
+                                ) : (
+                                  <Trash2 className="w-3.5 h-3.5 inline" />
+                                )}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </CardBody>
             </Card>
           )}
@@ -289,34 +560,302 @@ export function SettingsPage() {
                 <p className="text-body-sm text-neutral-500 mt-1">Manage your organization settings</p>
               </CardHeader>
               <CardBody className="space-y-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="label">Organization Name</label>
-                    <input type="text" defaultValue="Acme Corporation" className="input" disabled />
-                    <p className="form-hint">Only organization admins can change this.</p>
+                {orgLoading || membersLoading ? (
+                  <div className="py-10 flex items-center justify-center">
+                    <Loader2 className="w-5 h-5 text-brand-500 animate-spin" />
                   </div>
-                  <div>
-                    <label className="label">Slug</label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-neutral-400">sentinel.io/</span>
-                      <input type="text" defaultValue="acme-corp" className="input flex-1" disabled />
+                ) : (
+                  <>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="label">Organization Name</label>
+                        <form onSubmit={handleSaveOrg} className="space-y-2">
+                          <input
+                            type="text"
+                            defaultValue={org?.name}
+                            value={editOrgName}
+                            onChange={(e) => setEditOrgName(e.target.value)}
+                            className="input"
+                            disabled={savingOrg}
+                          />
+                          <p className="form-hint">Only organization admins can change this.</p>
+                          <button
+                            type="submit"
+                            className="btn-primary btn-sm"
+                            disabled={savingOrg || !editOrgName.trim()}
+                          >
+                            {savingOrg ? 'Saving...' : 'Save Name'}
+                          </button>
+                        </form>
+                      </div>
+                      <div>
+                        <label className="label">Slug</label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-neutral-400">sentinel.io/</span>
+                          <input
+                            type="text"
+                            defaultValue={org?.slug}
+                            className="input flex-1"
+                            disabled
+                          />
+                          <p className="form-hint">Slug cannot be changed after creation.</p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
 
-                <div className="pt-6 border-t border-neutral-200">
-                  <h3 className="text-body-md font-medium text-neutral-900 mb-4">Members</h3>
-                  <div className="empty-state py-8">
-                    <Users className="empty-state-icon w-12 h-12" />
-                    <p className="empty-state-title">Member Management</p>
-                    <p className="empty-state-description">Invite and manage team members (requires org_admin role).</p>
-                  </div>
-                </div>
+                    <div className="pt-6 border-t border-neutral-200">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-body-md font-medium text-neutral-900">Members</h3>
+                        <button
+                          className="btn-secondary btn-sm flex items-center gap-2"
+                          onClick={() => setInviteModal(true)}
+                        >
+                          <Plus className="w-4 h-4" />
+                          Invite Member
+                        </button>
+                      </div>
+
+                      {members.length === 0 ? (
+                        <div className="empty-state py-8">
+                          <Users className="empty-state-icon w-12 h-12" />
+                          <p className="empty-state-title">No Members</p>
+                          <p className="empty-state-description">Invite teammates to collaborate on moderation.</p>
+                        </div>
+                      ) : (
+                        <div className="table-container">
+                          <table className="table">
+                            <thead>
+                              <tr>
+                                <th>Member</th>
+                                <th>Role</th>
+                                <th>Joined</th>
+                                <th></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {members.map((member: any) => (
+                                <tr key={member.id}>
+                                  <td className="font-medium text-neutral-900">
+                                    {member.user?.name || member.user?.email || 'Unknown'}
+                                  </td>
+                                  <td>
+                                    <Badge variant="neutral">{ROLE_LABELS[member.role] || member.role}</Badge>
+                                  </td>
+                                  <td className="text-body-sm text-neutral-600">
+                                    {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : '—'}
+                                  </td>
+                                  <td>
+                                    {member.userId === user?.id ? (
+                                      <span className="text-body-xs text-neutral-400">You</span>
+                                    ) : (
+                                      <div className="flex items-center gap-1.5">
+                                        <button
+                                          onClick={() => handleUpdateMember(member, 'moderator')}
+                                          disabled={updatingMemberId === member.id || lastOwner}
+                                          className="btn-ghost btn-sm text-body-xs"
+                                          title="Set as moderator"
+                                        >
+                                          {updatingMemberId === member.id ? (
+                                            <RefreshCw className="w-3 h-3 animate-spin" />
+                                          ) : (
+                                            'Moderator'
+                                          )}
+                                        </button>
+                                        <button
+                                          onClick={() => handleRemoveMember(member.userId)}
+                                          disabled={removingMemberId === member.id || lastOwner}
+                                          className="btn-ghost btn-sm text-status-critical text-body-xs"
+                                          title="Remove member"
+                                        >
+                                          {removingMemberId === member.id ? (
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                          ) : (
+                                            'Remove'
+                                          )}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {lastOwner && (
+                        <p className="text-body-xs text-neutral-400 mt-2">
+                          You are the last organization admin — role changes and removal are disabled until another admin exists.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
               </CardBody>
             </Card>
           )}
         </div>
       </div>
+
+      {/* Create API Key Modal */}
+      {createModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setCreateModal(false)}>
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-md m-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-neutral-200">
+              <h2 className="text-heading-lg font-semibold text-neutral-900">Create API Key</h2>
+              <p className="text-body-sm text-neutral-500 mt-1">The key value is shown only once.</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-body-sm font-medium text-neutral-700 mb-1" htmlFor="key-name">
+                  Key Name *
+                </label>
+                <input
+                  id="key-name"
+                  type="text"
+                  value={keyName}
+                  onChange={e => setKeyName(e.target.value)}
+                  placeholder="e.g. Production Bot"
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-body-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-body-sm font-medium text-neutral-700 mb-1">
+                  Permissions
+                </label>
+                <div className="space-y-2">
+                  {['content:submit', 'content:read', 'case:read', 'case:resolve', 'api_key:read'].map(perm => (
+                    <label key={perm} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={keyPermissions.includes(perm)}
+                        onChange={e => {
+                          setKeyPermissions(e.target.checked
+                            ? [...keyPermissions, perm]
+                            : keyPermissions.filter(p => p !== perm)
+                          )}
+                        }
+                        className="rounded text-brand-600 focus:ring-brand-500"
+                      />
+                      {perm}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {newKey && (
+                <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-4">
+                  <p className="text-caption text-neutral-500 uppercase tracking-wider mb-1">Key Value (copy now)</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newKey}
+                      readOnly
+                      className="flex-1 input font-mono text-body-sm"
+                    />
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(newKey);
+                        setSuccessMessage('API key copied to clipboard.');
+                      }}
+                      className="btn-secondary btn-sm"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <p className="text-caption text-neutral-500 mt-1">
+                    Save this key securely. It will not be shown again.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-neutral-200 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                className="px-4 py-2 text-body-sm text-neutral-600 hover:text-neutral-900 transition-colors"
+                onClick={() => setCreateModal(false)}
+                disabled={creatingKey}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 bg-brand-600 text-white text-body-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors"
+                disabled={creatingKey || !keyName.trim()}
+                onClick={handleCreateKey}
+              >
+                {creatingKey ? 'Creating...' : 'Create Key'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invite Member Modal */}
+      {inviteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInviteModal(false)}>
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-md m-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-neutral-200">
+              <h2 className="text-heading-lg font-semibold text-neutral-900">Invite Member</h2>
+              <p className="text-body-sm text-neutral-500 mt-1">Invite a teammate to your organization.</p>
+            </div>
+            <form onSubmit={handleInviteMember} className="p-6 space-y-4">
+              <div>
+                <label className="block text-body-sm font-medium text-neutral-700 mb-1" htmlFor="invite-email">
+                  Email *
+                </label>
+                <input
+                  id="invite-email"
+                  type="email"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  placeholder="teammate@example.com"
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-body-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-body-sm font-medium text-neutral-700 mb-1" htmlFor="invite-role">
+                  Role *
+                </label>
+                <select
+                  id="invite-role"
+                  value={inviteRole}
+                  onChange={e => setInviteRole(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-body-sm"
+                >
+                  <option value="org_admin">Organization Admin</option>
+                  <option value="moderator">Moderator</option>
+                  <option value="reviewer">Reviewer</option>
+                  <option value="end_user">End User</option>
+                </select>
+              </div>
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  className="px-4 py-2 text-body-sm text-neutral-600 hover:text-neutral-900 transition-colors"
+                  onClick={() => setInviteModal(false)}
+                  disabled={inviting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-brand-600 text-white text-body-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors"
+                  disabled={inviting || !inviteEmail.trim()}
+                >
+                  {inviting ? 'Sending...' : 'Send Invite'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
