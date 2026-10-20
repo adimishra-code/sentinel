@@ -13,13 +13,18 @@ from datetime import datetime
 from orchestration.routes import router as orchestration_router
 from detection.routes import router as detection_router
 
+# Import validated config (fail-fast on missing/invalid env)
+from shared.config import get_settings
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
+    # Fail-fast: validate all required environment variables
+    settings = get_settings()
     print("🚀 Sentinel Worker starting...")
-    print(f"   Model: {os.getenv('MODEL_NAME', 'gemini-2.0-flash-exp')}")
-    print(f"   Gemini API configured: {'yes' if os.getenv('GEMINI_API_KEY') else 'no (AI analysis disabled)'}")
+    print(f"   Model: {settings.model_name}")
+    print(f"   Gemini API configured: {'yes' if settings.gemini_api_key else 'no (AI analysis disabled)'}")
 
     sentry_dsn = os.getenv("SENTRY_DSN")
     if sentry_dsn:
