@@ -68,6 +68,7 @@ const envSchema = z.object({
 
   // Observability
   SENTRY_DSN: z.string().optional(),
+  AUDIT_RETENTION_DAYS: z.coerce.number().default(90),
 });
 
 type Env = z.infer<typeof envSchema>;
@@ -128,6 +129,7 @@ interface Config {
     modelApiKey: Env['MODEL_API_KEY'] | undefined;
   };
   sentryDsn: Env['SENTRY_DSN'] | undefined;
+  auditRetentionDays: Env['AUDIT_RETENTION_DAYS'];
 }
 
 const config: Config = {
@@ -181,6 +183,7 @@ const config: Config = {
     modelApiKey: env.MODEL_API_KEY,
   },
   sentryDsn: env.SENTRY_DSN,
+  auditRetentionDays: env.AUDIT_RETENTION_DAYS,
 };
 
 export default config;

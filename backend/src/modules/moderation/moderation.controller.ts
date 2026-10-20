@@ -4,10 +4,17 @@ import * as moderationService from './moderation.service';
 import { ModerateContentSchema } from '../../types/schemas';
 import { enqueueModeration, moderationQueue } from '../../utils/queue';
 import { z } from 'zod';
+import { getRedisClient } from '../../utils/redis';
+
+/**
+ * TTL for idempotency cache entries (24 hours)
+ */
+const IDEMPOTENCY_TTL_SECONDS = 60 * 60 * 24;
 
 /**
  * Moderate content (synchronously or asynchronously via queue)
  * POST /api/v1/moderate
+ * Supports Idempotency-Key header for safe retries.
  */
 export const moderateContent = asyncHandler(async (req: Request, res: Response) => {
   const input = ModerateContentSchema.parse(req.body);
@@ -22,11 +29,26 @@ export const moderateContent = asyncHandler(async (req: Request, res: Response) 
     });
   }
 
+  // Idempotency: return cached response if the same key was already processed
+  const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
+  if (idempotencyKey) {
+    try {
+      const redis = getRedisClient();
+      const cacheKey = `idempotent:${req.organizationId}:${idempotencyKey}`;
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return res.status(200).json(JSON.parse(cached));
+      }
+    } catch {
+      // Redis unavailable — proceed without idempotency
+    }
+  }
+
   const isAsync = req.query.async === 'true' || req.headers['prefer'] === 'respond-async';
 
   if (isAsync) {
     const job = await enqueueModeration(req.organizationId, input as any);
-    return res.status(202).json({
+    const response = {
       success: true,
       status: 'queued',
       jobId: job.id,
@@ -35,19 +57,49 @@ export const moderateContent = asyncHandler(async (req: Request, res: Response) 
         requestId: (req as any).requestId,
         timestamp: new Date().toISOString(),
       },
-    });
+    };
+    if (idempotencyKey) {
+      try {
+        const redis = getRedisClient();
+        await redis.set(
+          `idempotent:${req.organizationId}:${idempotencyKey}`,
+          JSON.stringify(response),
+          'EX',
+          IDEMPOTENCY_TTL_SECONDS
+        );
+      } catch {
+        // Non-critical
+      }
+    }
+    return res.status(202).json(response);
   }
 
   const result = await moderationService.moderateContent(req.organizationId, input as any);
 
-  res.status(200).json({
+  const response = {
     success: true,
     data: result,
     meta: {
       requestId: (req as any).requestId,
       timestamp: new Date().toISOString(),
     },
-  });
+  };
+
+  if (idempotencyKey) {
+    try {
+      const redis = getRedisClient();
+      await redis.set(
+        `idempotent:${req.organizationId}:${idempotencyKey}`,
+        JSON.stringify(response),
+        'EX',
+        IDEMPOTENCY_TTL_SECONDS
+      );
+    } catch {
+      // Non-critical
+    }
+  }
+
+  res.status(200).json(response);
 });
 
 /**

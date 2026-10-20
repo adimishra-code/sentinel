@@ -82,6 +82,22 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       req.userId = userData.id;
       req.user = userData;
 
+      // Set organization context from user's primary membership so that
+      // requirePermission and downstream controllers have tenant scope
+      // without requiring the client to send X-Organization-ID.
+      try {
+        const membership = await OrganizationMember.findOne({ userId: payload.userId })
+          .populate('organizationId')
+          .sort({ createdAt: 1 });
+        if (membership) {
+          req.organizationId = membership.organizationId._id.toString();
+          req.userRole = membership.role;
+          req.permissions = membership.permissions || [];
+        }
+      } catch (orgErr) {
+        // Non-critical; authorization middleware will reject if org scope is required.
+      }
+
       return next();
     }
 
@@ -116,6 +132,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
           permissions: apiKey.permissions,
           apiKeyId: apiKey._id.toString(),
           expiresAt: apiKey.expiresAt ? apiKey.expiresAt.toISOString() : null,
+          ipAllowlist: apiKey.ipAllowlist || [],
         };
 
         try {
@@ -129,6 +146,25 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       // Check expiration on cached key
       if (apiKeyData.expiresAt && new Date(apiKeyData.expiresAt) < new Date()) {
         throw AppError.unauthorized('API key has expired');
+      }
+
+      // IP allowlist check (if configured)
+      const clientIp = (req as any).cfConnectingIP || req.ip || req.socket.remoteAddress || '127.0.0.1';
+      if (apiKeyData.ipAllowlist && apiKeyData.ipAllowlist.length > 0) {
+        const allowed = apiKeyData.ipAllowlist.some((entry: string) => {
+          if (entry.includes('/')) {
+            const [net, bits] = entry.split('/');
+            const netNum = ipToNumber(net);
+            const maskNum = ipToNumber(clientIp);
+            if (netNum === null || maskNum === null) return false;
+            const mask = (0xffffffff << (32 - parseInt(bits, 10))) & 0xffffffff;
+            return (netNum & mask) === (maskNum & mask);
+          }
+          return entry === clientIp;
+        });
+        if (!allowed) {
+          throw AppError.forbidden('Client IP not allowed for this API key');
+        }
       }
 
       // Set request context
@@ -302,3 +338,18 @@ export const requirePlatformAdmin = requireRole(UserRole.PLATFORM_ADMIN);
  * Require org admin role or higher
  */
 export const requireOrgAdmin = requireRole(UserRole.PLATFORM_ADMIN, UserRole.ORG_ADMIN);
+
+/**
+ * Convert an IPv4 string to a 32-bit integer for CIDR matching.
+ */
+const ipToNumber = (ip: string): number | null => {
+  const parts = ip.split('.');
+  if (parts.length !== 4) return null;
+  let num = 0;
+  for (const part of parts) {
+    const val = parseInt(part, 10);
+    if (isNaN(val) || val < 0 || val > 255) return null;
+    num = (num << 8) | val;
+  }
+  return num >>> 0;
+};

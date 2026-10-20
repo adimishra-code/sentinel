@@ -48,7 +48,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   const result = await authService.login({
     ...input,
     userAgent: req.headers['user-agent'],
-    ipAddress: req.ip,
+    ipAddress: (req as any).cfConnectingIP || req.ip,
   });
 
   logger.info('User logged in', {
@@ -294,7 +294,7 @@ export const ssoCallback = asyncHandler(async (req: Request, res: Response) => {
   const result = await authService.ssoLogin({
     ...input,
     userAgent: req.headers['user-agent'],
-    ipAddress: req.ip,
+    ipAddress: (req as any).cfConnectingIP || req.ip,
   });
 
   logger.info('User authenticated via SSO', {

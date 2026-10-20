@@ -23,6 +23,17 @@ import {
 import { UserRole, UserStatus } from '../../types';
 import logger from '../../utils/logger';
 import { notify } from '../notifications/notifications.service';
+import { getRedisClient } from '../../utils/redis';
+
+/**
+ * Failed login attempt lockout configuration
+ */
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_WINDOW_SECONDS = 15 * 60; // 15 minutes
+const LOGIN_LOCKOUT_TTL_SECONDS = 60 * 60 * 24; // 24 hours for the key
+
+const loginAttemptsKey = (email: string) => `login:attempts:${email}`;
+const loginLockoutKey = (email: string) => `login:lockout:${email}`;
 
 export interface RegisterInput {
   email: string;
@@ -154,22 +165,68 @@ export const register = async (input: RegisterInput): Promise<AuthResponse> => {
  */
 export const login = async (input: LoginInput): Promise<AuthResponse> => {
   const { email, password, userAgent, ipAddress } = input;
+  const normalizedEmail = email.toLowerCase();
+
+  // Check if the account is locked due to too many failed attempts
+  try {
+    const redis = getRedisClient();
+    const lockoutKey = loginLockoutKey(normalizedEmail);
+    const lockoutTTL = await redis.ttl(lockoutKey);
+    if (lockoutTTL > 0) {
+      throw AppError.tooManyRequests(
+        `Account temporarily locked due to too many failed login attempts. Try again in ${lockoutTTL} seconds.`
+      );
+    }
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    // Redis unavailable — proceed without lockout
+  }
 
   // Find user with password field
-  const user = await User.findOne({ email: email.toLowerCase() }).select('+passwordHash');
+  const user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
+
+  // Record a failed attempt regardless of whether the user exists (prevents enumeration)
+  const recordFailedAttempt = async () => {
+    try {
+      const redis = getRedisClient();
+      const attemptsKey = loginAttemptsKey(normalizedEmail);
+      const attempts = (await redis.incr(attemptsKey)) || 1;
+      if (attempts === 1) {
+        await redis.expire(attemptsKey, LOGIN_LOCKOUT_TTL_SECONDS);
+      }
+      if (attempts >= LOGIN_MAX_ATTEMPTS) {
+        await redis.setex(loginLockoutKey(normalizedEmail), LOGIN_LOCKOUT_WINDOW_SECONDS, '1');
+      }
+    } catch {
+      // Redis unavailable — proceed without lockout tracking
+    }
+  };
+
   if (!user) {
+    await recordFailedAttempt();
     throw AppError.unauthorized('Invalid email or password');
   }
 
   // Check user status
   if (user.status !== UserStatus.ACTIVE) {
+    await recordFailedAttempt();
     throw AppError.unauthorized('User account is not active');
   }
 
   // Verify password
   const isPasswordValid = await comparePassword(password, user.passwordHash);
   if (!isPasswordValid) {
+    await recordFailedAttempt();
     throw AppError.unauthorized('Invalid email or password');
+  }
+
+  // Reset failed attempts on successful password check
+  try {
+    const redis = getRedisClient();
+    await redis.del(loginAttemptsKey(normalizedEmail));
+    await redis.del(loginLockoutKey(normalizedEmail));
+  } catch {
+    // Non-critical
   }
 
   // Get user's primary organization (first one they're a member of)

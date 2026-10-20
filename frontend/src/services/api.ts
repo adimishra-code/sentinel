@@ -166,7 +166,7 @@ export const organizationsApi = {
 
 export const apiKeysApi = {
   list: () => api.get<any[]>('/api-keys'),
-  create: (data: { name: string; permissions: string[]; expiresInDays?: number }) =>
+  create: (data: { name: string; permissions: string[]; expiresInDays?: number; ipAllowlist?: string[] }) =>
     api.post<any>('/api-keys', data),
   revoke: (id: string) => api.delete<void>(`/api-keys/${id}`),
 };

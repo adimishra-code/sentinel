@@ -194,6 +194,7 @@ export const CreateApiKeySchema = z.object({
   name: z.string().min(1).max(100),
   permissions: z.array(z.string()),
   expiresInDays: z.number().int().positive().max(365).optional(),
+  ipAllowlist: z.array(z.string()).optional(),
 });
 
 // ============================================================================

@@ -9,9 +9,11 @@ import { Webhook, WebhookDelivery, WebhookEvent } from './webhook.model';
 import { AppError } from '../../middleware/errorHandler';
 import logger from '../../utils/logger';
 import { enqueueWebhookRetry } from '../../utils/queue';
+import { validateWebhookUrl, isBlockedIp } from '../../utils/ssrf';
 
 const MAX_FAILURES = 5;
 const DELIVERY_TIMEOUT_MS = 10000;
+const MAX_RESPONSE_BYTES = 1024 * 1024; // 1 MB response size cap
 
 /**
  * Generate a webhook secret
@@ -19,19 +21,82 @@ const DELIVERY_TIMEOUT_MS = 10000;
 const generateSecret = () => crypto.randomBytes(32).toString('hex');
 
 /**
- * Sign webhook payload with HMAC-SHA256
+ * Sign webhook payload with HMAC-SHA256.
+ * Includes a timestamp in the signed payload for replay protection.
  */
-const signPayload = (payload: string, secret: string): string => {
-  return `sha256=${crypto.createHmac('sha256', secret).update(payload).digest('hex')}`;
+const signPayload = (payload: string, secret: string, timestamp: number): string => {
+  const signedPayload = `${timestamp}.${payload}`;
+  return `sha256=${crypto.createHmac('sha256', secret).update(signedPayload).digest('hex')}`;
 };
 
 /**
- * Create a webhook
+ * Verify a webhook signature with timestamp tolerance (replay protection).
+ * @param signature - The X-Sentinel-Signature header value
+ * @param payload - The raw request body string
+ * @param secret - The webhook secret
+ * @param timestampToleranceMs - Allowed clock skew in ms (default 5 minutes)
+ */
+export const verifyWebhookSignature = (
+  signature: string,
+  payload: string,
+  secret: string,
+  timestampToleranceMs: number = 5 * 60 * 1000,
+): boolean => {
+  if (!signature || !secret) {
+    return false;
+  }
+
+  // Expected format: sha256=<hex>
+  const match = signature.match(/^sha256=([0-9a-f]+)$/i);
+  if (!match) {
+    return false;
+  }
+  const receivedSig = match[1];
+
+  // The payload is timestamped: "timestamp.jsonbody"
+  const dotIndex = payload.indexOf('.');
+  if (dotIndex <= 0) {
+    return false;
+  }
+
+  const timestampStr = payload.slice(0, dotIndex);
+  const body = payload.slice(dotIndex + 1);
+
+  const timestamp = parseInt(timestampStr, 10);
+  if (isNaN(timestamp)) {
+    return false;
+  }
+
+  // Replay protection: reject timestamps outside the tolerance window
+  const now = Date.now();
+  if (Math.abs(now - timestamp) > timestampToleranceMs) {
+    return false;
+  }
+
+  const signedPayload = `${timestamp}.${body}`;
+  const expectedSig = crypto
+    .createHmac('sha256', secret)
+    .update(signedPayload)
+    .digest('hex');
+
+  const sigBuffer = Buffer.from(receivedSig, 'hex');
+  const expectedBuffer = Buffer.from(expectedSig, 'hex');
+  if (sigBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(sigBuffer, expectedBuffer);
+};
+
+/**
+ * Create a webhook with SSRF-validated URL
  */
 export const createWebhook = async (
   organizationId: string,
   input: { name: string; url: string; events: WebhookEvent[] }
 ) => {
+  // SSRF validation: block private/loopback/link-local/metadata URLs
+  await validateWebhookUrl(input.url);
+
   const secret = generateSecret();
   const webhook = await Webhook.create({
     organizationId,
@@ -119,21 +184,40 @@ export const deliverEvent = async (
 
   if (webhooks.length === 0) return;
 
-  const payload = JSON.stringify({
+  const body = JSON.stringify({
     event,
     organizationId,
     timestamp: new Date().toISOString(),
     data,
   });
+  const timestamp = Date.now();
+  const signedPayload = `${timestamp}.${body}`;
 
   const deliveries = webhooks.map(async (webhook) => {
-    const signature = signPayload(payload, webhook.secret);
+    // DNS rebinding defense: re-validate URL at delivery time
+    try {
+      await validateWebhookUrl(webhook.url);
+    } catch {
+      webhook.failureCount += 1;
+      webhook.lastDeliveryStatus = 'failure';
+      if (webhook.failureCount >= MAX_FAILURES) {
+        webhook.active = false;
+        logger.warn('Webhook disabled due to SSRF violation', {
+          webhookId: webhook._id,
+          url: webhook.url,
+        });
+      }
+      await webhook.save().catch(() => {});
+      return;
+    }
+
+    const signature = signPayload(body, webhook.secret, timestamp);
     let success = false;
     let statusCode: number | undefined;
     let responseBody: string | undefined;
 
     try {
-      const response = await axios.post(webhook.url, payload, {
+      const response = await axios.post(webhook.url, signedPayload, {
         headers: {
           'Content-Type': 'application/json',
           'X-Sentinel-Signature': signature,
@@ -141,11 +225,14 @@ export const deliverEvent = async (
           'X-Sentinel-Delivery': crypto.randomUUID(),
         },
         timeout: DELIVERY_TIMEOUT_MS,
+        maxRedirects: 0, // Disable redirects (SSRF defense)
+        maxContentLength: MAX_RESPONSE_BYTES, // Response size cap
         validateStatus: () => true,
       });
 
       statusCode = response.status;
-      responseBody = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+      responseBody =
+        typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
       success = response.status >= 200 && response.status < 300;
 
       if (success) {
@@ -174,7 +261,7 @@ export const deliverEvent = async (
         organizationId,
         url: webhook.url,
         event,
-        payload,
+        payload: signedPayload,
         signature,
       }).catch((queueErr) => {
         logger.warn('Failed to enqueue webhook retry', { error: queueErr });
@@ -188,7 +275,7 @@ export const deliverEvent = async (
       webhookId: webhook._id,
       organizationId,
       event,
-      payload: JSON.parse(payload),
+      payload: JSON.parse(body),
       statusCode,
       responseBody: responseBody?.substring(0, 500),
       success,

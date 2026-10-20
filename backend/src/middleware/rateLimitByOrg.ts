@@ -32,7 +32,7 @@ export const rateLimitByOrg = (options: RateLimitOptions = {}) => {
     try {
       const orgId = req.organizationId || (req.headers['x-organization-id'] as string);
       const apiKeyId = req.apiKeyId;
-      const clientIp = req.ip || req.socket.remoteAddress || '127.0.0.1';
+      const clientIp = (req as any).cfConnectingIP || req.ip || req.socket.remoteAddress || '127.0.0.1';
       const now = Math.floor(Date.now() / 1000);
       const windowKey = Math.floor(now / windowSeconds);
       const resetTime = (windowKey + 1) * windowSeconds;

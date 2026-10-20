@@ -22,6 +22,15 @@ const app: Application = express();
 // Trust proxy - required for rate limiting behind reverse proxy
 app.set('trust proxy', 1);
 
+// Use Cloudflare CF-Connecting-IP for client IP when behind Cloudflare
+app.use((req, res, next) => {
+  const cfIp = req.headers['cf-connecting-ip'];
+  if (cfIp && typeof cfIp === 'string') {
+    (req as any).cfConnectingIP = cfIp.split(',')[0].trim();
+  }
+  next();
+});
+
 // Security middleware
 app.use(helmet());
 app.use(securityHeaders);

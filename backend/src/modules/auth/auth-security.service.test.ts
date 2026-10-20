@@ -82,7 +82,7 @@ beforeEach(() => {
   });
   vi.mocked(generateAccessToken).mockReturnValue('access-token');
   vi.mocked(generateRefreshToken).mockReturnValue('refresh-token');
-  vi.mocked(notify).mockResolvedValue(undefined);
+  vi.mocked(notify).mockResolvedValue(null);
 });
 
 describe('AuthService security', () => {

@@ -10,6 +10,7 @@ export interface IApiKey extends Document {
   permissions: string[];
   expiresAt?: Date;
   lastUsedAt?: Date;
+  ipAllowlist?: string[]; // Optional IP allowlist (CIDR or exact IPs)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -51,6 +52,10 @@ const apiKeySchema = new Schema<IApiKey>(
     },
     lastUsedAt: {
       type: Date,
+    },
+    ipAllowlist: {
+      type: [String],
+      default: [],
     },
   },
   {
