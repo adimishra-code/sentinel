@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import config from '../../config';
 import { UserRole } from '../../types';
 
-const SALT_ROUNDS = 10;
+const SALT_ROUNDS = 12;
 
 // ============================================================================
 // Password Hashing
@@ -120,4 +120,44 @@ export const generateSlug = (name: string): string => {
 
 export const generateInviteToken = (): string => {
   return crypto.randomBytes(32).toString('hex');
+};
+
+// ============================================================================
+// At-rest encryption (AES-256-GCM) for secrets such as TOTP seeds
+// ============================================================================
+
+const ENCRYPTION_KEY_BUFFER = Buffer.from(config.encryption.key, 'utf8');
+
+if (ENCRYPTION_KEY_BUFFER.length < 32) {
+  throw new Error('ENCRYPTION_KEY must be at least 32 characters long');
+}
+
+/**
+ * Encrypt a plaintext secret using AES-256-GCM.
+ * Returns `iv:ciphertext` (both base64).
+ */
+export const encryptSecret = (plaintext: string): string => {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY_BUFFER, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return `${iv.toString('base64')}:${Buffer.concat([ciphertext, authTag]).toString('base64')}`;
+};
+
+/**
+ * Decrypt a secret produced by encryptSecret.
+ * Expects `iv:ciphertext` (both base64).
+ */
+export const decryptSecret = (encrypted: string): string => {
+  const [ivB64, payloadB64] = encrypted.split(':');
+  if (!ivB64 || !payloadB64) {
+    throw new Error('Invalid encrypted secret format');
+  }
+  const iv = Buffer.from(ivB64, 'base64');
+  const payload = Buffer.from(payloadB64, 'base64');
+  const ciphertext = payload.slice(0, payload.length - 16);
+  const authTag = payload.slice(payload.length - 16);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY_BUFFER, iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
 };

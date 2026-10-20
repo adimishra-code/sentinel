@@ -6,9 +6,11 @@
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { Notification, INotification, NotificationType } from './notification.model';
+import { NotificationPreference } from './notification-preference.model';
 import { getIO } from '../../utils/socket';
 import logger from '../../utils/logger';
 import { renderNotificationEmail } from './email-renderer';
+import { isChannelEnabled } from './preference.service';
 
 interface NotifyInput {
   organizationId: string;
@@ -49,38 +51,62 @@ function getEmailTransporter() {
 
 /**
  * Create an in-app notification and optionally send email
+ * Respects per-user, per-channel notification preferences.
  */
-export const notify = async (input: NotifyInput): Promise<INotification> => {
-  const notification = await Notification.create({
-    organizationId: input.organizationId,
-    userId: input.userId,
-    type: input.type,
-    title: input.title,
-    message: input.message,
-    data: input.data || {},
-    read: false,
-  });
+export const notify = async (input: NotifyInput): Promise<INotification | null> => {
+  // Respect in-app preference (default enabled)
+  const inAppEnabled = await isChannelEnabled(
+    input.userId,
+    input.type,
+    'in_app'
+  );
 
-  // Emit realtime notification via Socket.IO
-  try {
-    const io = getIO();
-    io.to(`user:${input.userId}`).emit('notification:new', {
-      id: notification._id.toString(),
-      type: notification.type,
-      title: notification.title,
-      message: notification.message,
-      data: notification.data,
-      createdAt: notification.createdAt,
+  // Respect email preference (default enabled) only when an email is provided
+  const emailEnabled =
+    !!input.email && (await isChannelEnabled(input.userId, input.type, 'email'));
+
+  if (!inAppEnabled && !emailEnabled) {
+    logger.debug('Notification suppressed by preferences', {
+      userId: input.userId,
+      type: input.type,
     });
-  } catch (_err) {
-    // Socket.IO might not be initialized in tests
+    return null;
   }
 
-  // Send email if address provided
-  if (input.email) {
+  let notification: INotification | null = null;
+
+  if (inAppEnabled) {
+    notification = await Notification.create({
+      organizationId: input.organizationId,
+      userId: input.userId,
+      type: input.type,
+      title: input.title,
+      message: input.message,
+      data: input.data || {},
+      read: false,
+    });
+
+    // Emit realtime notification via Socket.IO
+    try {
+      const io = getIO();
+      io.to(`user:${input.userId}`).emit('notification:new', {
+        id: notification._id.toString(),
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        data: notification.data,
+        createdAt: notification.createdAt,
+      });
+    } catch (_err) {
+      // Socket.IO might not be initialized in tests
+    }
+  }
+
+  // Send email if address provided and enabled
+  if (input.email && emailEnabled) {
     const transporter = getEmailTransporter();
     if (transporter) {
-      const fromName = process.env.SMTP_FROM_NAME || 'Sentinel';
+      const fromName = process.env.SMTP_HOST ? (process.env.SMTP_FROM_NAME || 'Sentinel') : 'Sentinel';
       const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
       const { html, text } = renderNotificationEmail({
         title: input.title,

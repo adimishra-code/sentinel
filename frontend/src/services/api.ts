@@ -69,6 +69,18 @@ export const authApi = {
   logout: () => api.post('/auth/logout', {}),
   refreshToken: (refreshToken: string) => api.post<{ accessToken: string; refreshToken: string }>('/auth/refresh', { refreshToken }),
   getMe: () => api.get<any>('/auth/me'),
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+    api.post<any>('/auth/change-password', data),
+  forgotPassword: (email: string) => api.post<any>('/auth/forgot-password', { email }),
+  resetPassword: (data: { token: string; newPassword: string }) =>
+    api.post<any>('/auth/reset-password', data),
+  getSessions: () => api.get<any[]>('/auth/sessions'),
+  revokeSession: (sessionId: string) => api.delete<void>(`/auth/sessions/${sessionId}`),
+  revokeAllSessions: () => api.post<void>('/auth/sessions/revoke-all', {}),
+  mfaSetup: () => api.post<any>('/auth/2fa/setup', {}),
+  mfaEnable: (code: string) => api.post<any>('/auth/2fa/enable', { code }),
+  mfaVerify: (code: string) => api.post<any>('/auth/2fa/verify', { code }),
+  mfaDisable: () => api.post<void>('/auth/2fa/disable', {}),
 };
 
 export const casesApi = {

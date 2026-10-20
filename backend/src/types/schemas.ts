@@ -36,6 +36,44 @@ export const SSOCallbackSchema = z.object({
 });
 
 // ============================================================================
+// ACCOUNT SECURITY SCHEMAS
+// ============================================================================
+
+const COMMON_PASSWORD_ERROR = 'Password is too common. Please choose a harder-to-guess password.';
+
+export const ChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z.string()
+    .min(10, 'Password must be at least 10 characters')
+    .refine((pw) => !isCommonPassword(pw), COMMON_PASSWORD_ERROR),
+});
+
+export const ForgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+export const ResetPasswordSchema = z.object({
+  token: z.string().min(1, 'Reset token is required'),
+  newPassword: z.string()
+    .min(10, 'Password must be at least 10 characters')
+    .refine((pw) => !isCommonPassword(pw), COMMON_PASSWORD_ERROR),
+});
+
+export const Verify2FASchema = z.object({
+  code: z.string().length(6, 'Code must be 6 digits').regex(/^\d{6}$/, 'Code must be 6 digits'),
+});
+
+export const Enable2FASchema = z.object({
+  code: z.string().length(6, 'Code must be 6 digits').regex(/^\d{6}$/, 'Code must be 6 digits'),
+});
+
+export const NotificationPreferenceSchema = z.object({
+  type: z.string().min(1, 'Notification type is required'),
+  channel: z.enum(['in_app', 'email']),
+  enabled: z.boolean(),
+});
+
+// ============================================================================
 // ORGANIZATION SCHEMAS
 // ============================================================================
 
@@ -201,3 +239,17 @@ export const ListAuditLogsSchema = z.object({
 export const IdParamSchema = z.object({
   id: z.string().min(1, 'ID is required'),
 });
+
+// Common passwords rejected by password policy
+const COMMON_PASSWORDS = new Set([
+  'password', 'password123', '1234567890', '123456789', '12345678', '1234567',
+  '123456', 'qwerty', 'qwerty123', 'abc123', 'monkey', 'dragon', 'master',
+  'login', 'welcome', 'shadow', 'sunshine', 'princess', 'football', 'baseball',
+  'superman', 'batman', 'trustno1', 'iloveyou', 'starwars', 'access', 'letmein',
+  'soccer', 'flower', 'daniel', 'magnesium', 'michael', 'charlie', 'ashley',
+  'password1', 'admin', 'root', 'test', 'guest', 'user', 'pass',
+]);
+
+export function isCommonPassword(password: string): boolean {
+  return COMMON_PASSWORDS.has(password.toLowerCase());
+}

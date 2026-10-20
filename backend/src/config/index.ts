@@ -7,6 +7,7 @@ if (process.env.NODE_ENV === 'test') {
   process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test_jwt_refresh_secret_must_be_at_least_32_chars_123456';
   process.env.MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/sentinel-test';
   process.env.WORKER_SHARED_SECRET = process.env.WORKER_SHARED_SECRET || 'test_worker_shared_secret_min_32_chars_123456';
+  process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'test_encryption_key_min_32_chars_123456';
 }
 
 const envSchema = z.object({
@@ -42,6 +43,7 @@ const envSchema = z.object({
   WORKER_URL: z.string().url().default('http://localhost:8000'),
   BACKEND_URL: z.string().url().default('http://localhost:3000'),
   WORKER_SHARED_SECRET: z.string().min(32, 'WORKER_SHARED_SECRET must be at least 32 characters long'),
+  ENCRYPTION_KEY: z.string().min(32, 'ENCRYPTION_KEY must be at least 32 characters long'),
 
   // SMTP (optional)
   SMTP_HOST: z.string().optional(),
@@ -101,6 +103,9 @@ interface Config {
     backendUrl: Env['BACKEND_URL'];
     sharedSecret: Env['WORKER_SHARED_SECRET'];
   };
+  encryption: {
+    key: Env['ENCRYPTION_KEY'];
+  };
   smtp: {
     host: Env['SMTP_HOST'] | undefined;
     port: Env['SMTP_PORT'];
@@ -150,6 +155,9 @@ const config: Config = {
     url: env.WORKER_URL,
     backendUrl: env.BACKEND_URL,
     sharedSecret: env.WORKER_SHARED_SECRET,
+  },
+  encryption: {
+    key: env.ENCRYPTION_KEY,
   },
   smtp: {
     host: env.SMTP_HOST,

@@ -4,11 +4,13 @@ export interface IRefreshToken extends Document {
   _id: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   tokenHash: string;
+  familyId: string; // token family for reuse detection
   expiresAt: Date;
   revoked: boolean;
   userAgent?: string;
   ipAddress?: string;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 const refreshTokenSchema = new Schema<IRefreshToken>(
@@ -22,6 +24,11 @@ const refreshTokenSchema = new Schema<IRefreshToken>(
       type: String,
       required: true,
       unique: true,
+    },
+    familyId: {
+      type: String,
+      required: true,
+      index: true,
     },
     expiresAt: {
       type: Date,
@@ -40,7 +47,7 @@ const refreshTokenSchema = new Schema<IRefreshToken>(
     },
   },
   {
-    timestamps: { createdAt: true, updatedAt: false },
+    timestamps: true,
     collection: 'refresh_tokens',
   }
 );

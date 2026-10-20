@@ -1,9 +1,13 @@
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { User, IUser } from './user.model';
 import { Organization } from '../organizations/organization.model';
 import { OrganizationMember } from '../organizations/organization-member.model';
 import { RefreshToken } from './refresh-token.model';
+import { PasswordResetToken } from './password-reset-token.model';
+import { TotpSecret } from './totp-secret.model';
 import { AppError } from '../../middleware/errorHandler';
+import config from '../../config';
 import {
   hashPassword,
   comparePassword,
@@ -12,9 +16,13 @@ import {
   verifyRefreshToken,
   hashToken,
   generateSlug,
+  generateInviteToken,
+  encryptSecret,
+  decryptSecret,
 } from './auth.utils';
 import { UserRole, UserStatus } from '../../types';
 import logger from '../../utils/logger';
+import { notify } from '../notifications/notifications.service';
 
 export interface RegisterInput {
   email: string;
@@ -42,10 +50,12 @@ export interface AuthResponse {
     name: string;
     slug: string;
   };
-  tokens: {
+  tokens?: {
     accessToken: string;
     refreshToken: string;
   };
+  mfaRequired?: boolean;
+  mfaToken?: string;
 }
 
 /**
@@ -173,7 +183,35 @@ export const login = async (input: LoginInput): Promise<AuthResponse> => {
 
   const organization = membership.organizationId as any;
 
-  // Generate tokens
+  // If 2FA is enabled, issue a short-lived MFA token instead of full session tokens
+  const totp = await TotpSecret.findOne({ userId: user._id, enabled: true });
+  if (totp) {
+    const mfaPayload = { userId: user._id.toString(), email: user.email, type: 'mfa' as const };
+    const mfaToken = jwt.sign(mfaPayload, config.jwt.refreshSecret, {
+      expiresIn: '5m',
+    } as jwt.SignOptions);
+
+    logger.info('Login requires MFA', { userId: user._id });
+
+    return {
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        name: user.name,
+        status: user.status,
+      },
+      organization: {
+        id: organization._id.toString(),
+        name: organization.name,
+        slug: organization.slug,
+      },
+      mfaRequired: true,
+      mfaToken,
+    };
+  }
+
+  // Generate tokens with a token family for reuse detection
+  const familyId = crypto.randomBytes(16).toString('hex');
   const accessToken = generateAccessToken(user._id.toString(), user.email);
   const refreshToken = generateRefreshToken(user._id.toString(), user.email);
 
@@ -184,6 +222,7 @@ export const login = async (input: LoginInput): Promise<AuthResponse> => {
   await RefreshToken.create({
     userId: user._id,
     tokenHash: hashToken(refreshToken),
+    familyId,
     expiresAt: refreshTokenExpiry,
     revoked: false,
     userAgent,
@@ -259,7 +298,21 @@ export const refresh = async (
     throw AppError.unauthorized('User account is not active');
   }
 
-  // Revoke old refresh token (single-use rotation)
+  // Reuse detection: if this token was already revoked, someone is replaying it.
+  // Revoke the entire token family to force re-login everywhere.
+  if (storedToken.revoked) {
+    await RefreshToken.updateMany(
+      { userId: storedToken.userId, familyId: storedToken.familyId },
+      { revoked: true }
+    );
+    logger.warn('Refresh token reuse detected, family revoked', {
+      userId: storedToken.userId,
+      familyId: storedToken.familyId,
+    });
+    throw AppError.unauthorized('Refresh token has been revoked');
+  }
+
+  // Revoke old refresh token (single-use rotation), keep same family
   storedToken.revoked = true;
   await storedToken.save();
 
@@ -267,13 +320,14 @@ export const refresh = async (
   const newAccessToken = generateAccessToken(user._id.toString(), user.email);
   const newRefreshToken = generateRefreshToken(user._id.toString(), user.email);
 
-  // Store new refresh token
+  // Store new refresh token in the same family
   const newRefreshTokenExpiry = new Date();
   newRefreshTokenExpiry.setDate(newRefreshTokenExpiry.getDate() + 7); // 7 days
 
   await RefreshToken.create({
     userId: user._id,
     tokenHash: hashToken(newRefreshToken),
+    familyId: storedToken.familyId,
     expiresAt: newRefreshTokenExpiry,
     revoked: false,
     userAgent,
@@ -448,4 +502,165 @@ export const ssoLogin = async (input: SSOLoginInput): Promise<AuthResponse> => {
       refreshToken,
     },
   };
+};
+
+/**
+ * Change the user's password after verifying the current password.
+ * Revokes all other refresh token sessions and sends a notice email.
+ */
+export const changePassword = async (
+  userId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<void> => {
+  const user = await User.findById(userId).select('+passwordHash email');
+  if (!user) {
+    throw AppError.notFound('User not found');
+  }
+
+  const isPasswordValid = await comparePassword(currentPassword, user.passwordHash);
+  if (!isPasswordValid) {
+    throw AppError.unauthorized('Current password is incorrect');
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  user.passwordHash = passwordHash;
+  await user.save();
+
+  // Revoke all refresh token sessions (force re-login everywhere)
+  await RefreshToken.updateMany({ userId: user._id, revoked: false }, { revoked: true });
+
+  logger.info('Password changed', { userId: user._id });
+
+  // Send notice email (best effort)
+  try {
+    await notify({
+      organizationId: '',
+      userId: user._id.toString(),
+      type: 'system',
+      title: 'Password changed',
+      message: 'Your password was changed recently. If this was not you, contact support immediately.',
+    });
+  } catch {
+    // Non-critical
+  }
+};
+
+/**
+ * Request a password reset token. Returns successfully regardless of whether
+ * the email exists to prevent user enumeration.
+ */
+export const forgotPassword = async (email: string): Promise<void> => {
+  const user = await User.findOne({ email }).select('_id');
+  if (!user) {
+    // Still return success to the caller; do not reveal existence.
+    return;
+  }
+
+  // Invalidate any existing unused reset tokens for this user
+  await PasswordResetToken.updateMany(
+    { userId: user._id, used: false },
+    { used: true }
+  );
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + 30);
+
+  await PasswordResetToken.create({
+    userId: user._id,
+    tokenHash,
+    expiresAt,
+    used: false,
+  });
+
+  // Best-effort email with reset link (dev: logs to console via transporter fallback)
+  try {
+    await notify({
+      organizationId: '',
+      userId: user._id.toString(),
+      type: 'system',
+      title: 'Password reset requested',
+      message: `Use this reset token (valid for 30 minutes): ${token}`,
+      data: { token },
+    });
+  } catch {
+    // Non-critical
+  }
+};
+
+/**
+ * Reset password using a single-use hashed token.
+ */
+export const resetPassword = async (token: string, newPassword: string): Promise<void> => {
+  const tokenHash = hashToken(token);
+  const resetToken = await PasswordResetToken.findOne({
+    tokenHash,
+    used: false,
+    expiresAt: { $gt: new Date() },
+  });
+
+  if (!resetToken) {
+    throw AppError.badRequest('Invalid or expired reset token');
+  }
+
+  const user = await User.findById(resetToken.userId).select('+passwordHash');
+  if (!user) {
+    throw AppError.notFound('User not found');
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  user.passwordHash = passwordHash;
+  await user.save();
+
+  // Mark token used
+  resetToken.used = true;
+  await resetToken.save();
+
+  // Revoke all sessions (force re-login)
+  await RefreshToken.updateMany({ userId: user._id, revoked: false }, { revoked: true });
+
+  logger.info('Password reset via token', { userId: user._id });
+};
+
+/**
+ * List refresh token sessions for a user.
+ */
+export const getSessions = async (userId: string) => {
+  const tokens = await RefreshToken.find({ userId }).sort({ createdAt: -1 }).lean();
+
+  return tokens.map((t) => ({
+    id: t._id.toString(),
+    createdAt: t.createdAt,
+    lastUsedAt: t.updatedAt,
+    userAgent: t.userAgent,
+    ipAddress: t.ipAddress,
+    revoked: t.revoked,
+    expiresAt: t.expiresAt,
+  }));
+};
+
+/**
+ * Revoke a single session if it belongs to the user.
+ */
+export const revokeSession = async (userId: string, sessionId: string): Promise<void> => {
+  const token = await RefreshToken.findOne({ _id: sessionId, userId });
+  if (!token) {
+    throw AppError.notFound('Session not found');
+  }
+  token.revoked = true;
+  await token.save();
+};
+
+/**
+ * Revoke all sessions except the one identified by currentTokenHash.
+ */
+export const revokeAllSessions = async (userId: string, currentToken?: string): Promise<void> => {
+  const query: any = { userId, revoked: false };
+  if (currentToken) {
+    const currentHash = hashToken(currentToken);
+    query.tokenHash = { $ne: currentHash };
+  }
+  await RefreshToken.updateMany(query, { revoked: true });
 };

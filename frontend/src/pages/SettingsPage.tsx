@@ -4,7 +4,7 @@ import { Card, CardHeader, CardBody, CardFooter } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { useAuthStore } from '../stores/authStore';
 import { clsx } from 'clsx';
-import { organizationsApi, apiKeysApi } from '../services/api';
+import { organizationsApi, apiKeysApi, authApi } from '../services/api';
 
 const tabs = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -135,6 +135,23 @@ export function SettingsPage() {
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
 
+  /* ============ Security state ============ */
+  const [securityView, setSecurityView] = useState<'password' | 'sessions' | 'mfa' | null>(null);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaStep, setMfaStep] = useState<'setup' | 'verify' | 'recovery' | null>(null);
+  const [otpauthUrl, setOtpauthUrl] = useState<string | null>(null);
+  const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [mfaCode, setMfaCode] = useState('');
+  const [enablingMfa, setEnablingMfa] = useState(false);
+
   const loadOrganization = async () => {
     if (!user?.organizationId) return;
     setOrgLoading(true);
@@ -162,12 +179,128 @@ export function SettingsPage() {
     }
   };
 
+  /* ============ Security handlers ============ */
+  const loadSessions = async () => {
+    setSessionsLoading(true);
+    try {
+      const data = await authApi.getSessions();
+      setSessions(Array.isArray(data) ? data : (data as any)?.items ?? []);
+    } catch {
+      setErrorMessage('Failed to load sessions');
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setChangingPassword(true);
+    clearMessages();
+    if (newPassword !== confirmPassword) {
+      setErrorMessage('Passwords do not match');
+      setChangingPassword(false);
+      return;
+    }
+    try {
+      await authApi.changePassword({ currentPassword, newPassword });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setSuccessMessage('Password changed successfully. All other sessions were revoked.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to change password');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  const handleRevokeSession = async (sessionId: string) => {
+    setRevokingSessionId(sessionId);
+    clearMessages();
+    try {
+      await authApi.revokeSession(sessionId);
+      await loadSessions();
+      setSuccessMessage('Session revoked.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to revoke session');
+    } finally {
+      setRevokingSessionId(null);
+    }
+  };
+
+  const handleRevokeAllSessions = async () => {
+    if (!confirm('Revoke all other sessions? You will need to sign in again on other devices.')) return;
+    clearMessages();
+    try {
+      await authApi.revokeAllSessions();
+      await loadSessions();
+      setSuccessMessage('All other sessions revoked.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to revoke sessions');
+    }
+  };
+
+  const handleMfaSetup = async () => {
+    setEnablingMfa(true);
+    clearMessages();
+    try {
+      const result = await authApi.mfaSetup();
+      const data = result?.data ?? result;
+      setOtpauthUrl(data.otpauthUrl);
+      setMfaSecret(data.secret);
+      setMfaStep('verify');
+      setSuccessMessage('Scan the QR code with your authenticator app, then enter the code below.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to set up 2FA');
+    } finally {
+      setEnablingMfa(false);
+    }
+  };
+
+  const handleMfaEnable = async () => {
+    setEnablingMfa(true);
+    clearMessages();
+    try {
+      const result = await authApi.mfaEnable(mfaCode);
+      const data = result?.data ?? result;
+      setMfaEnabled(true);
+      setRecoveryCodes(data.recoveryCodes || []);
+      setMfaStep('recovery');
+      setMfaCode('');
+      setSuccessMessage('Two-factor authentication enabled. Save your recovery codes.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Invalid code. Try again.');
+    } finally {
+      setEnablingMfa(false);
+    }
+  };
+
+  const handleMfaDisable = async () => {
+    if (!confirm('Disable two-factor authentication?')) return;
+    setEnablingMfa(true);
+    clearMessages();
+    try {
+      await authApi.mfaDisable();
+      setMfaEnabled(false);
+      setMfaStep(null);
+      setRecoveryCodes([]);
+      setSuccessMessage('Two-factor authentication disabled.');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to disable 2FA');
+    } finally {
+      setEnablingMfa(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'organization') {
       loadOrganization();
       loadMembers();
     }
-  }, [activeTab, user?.organizationId]);
+    if (activeTab === 'security' && securityView === 'sessions') {
+      loadSessions();
+    }
+  }, [activeTab, securityView, user?.organizationId]);
 
   const handleSaveOrg = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -423,31 +556,284 @@ export function SettingsPage() {
                 <p className="text-body-sm text-neutral-500 mt-1">Manage your account security settings</p>
               </CardHeader>
               <CardBody className="space-y-6">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-lg">
-                    <div>
-                      <p className="text-body-md font-medium text-neutral-900">Two-Factor Authentication</p>
-                      <p className="text-body-sm text-neutral-500">Add an extra layer of security to your account</p>
-                    </div>
-                    <button className="btn-secondary btn-sm">Enable 2FA</button>
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-lg">
-                    <div>
-                      <p className="text-body-md font-medium text-neutral-900">Password</p>
-                      <p className="text-body-sm text-neutral-500">Last changed: Never</p>
-                    </div>
-                    <button className="btn-secondary btn-sm">Change Password</button>
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-lg">
-                    <div>
-                      <p className="text-body-md font-medium text-neutral-900">Active Sessions</p>
-                      <p className="text-body-sm text-neutral-500">1 active session (this device)</p>
-                    </div>
-                    <button className="btn-ghost btn-sm">View All</button>
-                  </div>
+                {/* Sub-navigation */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setSecurityView('password'); setMfaStep(null); }}
+                    className={clsx(
+                      'px-3 py-1.5 rounded-lg text-body-sm font-medium transition-colors',
+                      securityView === 'password'
+                        ? 'bg-brand-50 text-brand-700'
+                        : 'text-neutral-600 hover:bg-neutral-100'
+                    )}
+                  >
+                    Password
+                  </button>
+                  <button
+                    onClick={() => { setSecurityView('sessions'); setMfaStep(null); }}
+                    className={clsx(
+                      'px-3 py-1.5 rounded-lg text-body-sm font-medium transition-colors',
+                      securityView === 'sessions'
+                        ? 'bg-brand-50 text-brand-700'
+                        : 'text-neutral-600 hover:bg-neutral-100'
+                    )}
+                  >
+                    Sessions
+                  </button>
+                  <button
+                    onClick={() => { setSecurityView('mfa'); setMfaStep(null); }}
+                    className={clsx(
+                      'px-3 py-1.5 rounded-lg text-body-sm font-medium transition-colors',
+                      securityView === 'mfa'
+                        ? 'bg-brand-50 text-brand-700'
+                        : 'text-neutral-600 hover:bg-neutral-100'
+                    )}
+                  >
+                    Two-Factor Auth
+                  </button>
                 </div>
+
+                {/* Password change */}
+                {securityView === 'password' && (
+                  <div className="space-y-4">
+                    <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
+                      <div>
+                        <label className="block text-body-sm font-medium text-neutral-700 mb-1" htmlFor="cur-password">
+                          Current Password
+                        </label>
+                        <input
+                          id="cur-password"
+                          type="password"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          className="input w-full"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-body-sm font-medium text-neutral-700 mb-1" htmlFor="new-password">
+                          New Password
+                        </label>
+                        <input
+                          id="new-password"
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="input w-full"
+                          required
+                          minLength={10}
+                        />
+                        <p className="text-caption text-neutral-500 mt-1">
+                          Must be at least 10 characters and not a common password.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-body-sm font-medium text-neutral-700 mb-1" htmlFor="confirm-password">
+                          Confirm New Password
+                        </label>
+                        <input
+                          id="confirm-password"
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          className="input w-full"
+                          required
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className="btn-primary btn-md"
+                        disabled={changingPassword}
+                      >
+                        {changingPassword ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Changing...
+                          </>
+                        ) : (
+                          'Change Password'
+                        )}
+                      </button>
+                    </form>
+                    <p className="text-caption text-neutral-500">
+                      Changing your password revokes all other active sessions.
+                    </p>
+                  </div>
+                )}
+
+                {/* Sessions */}
+                {securityView === 'sessions' && (
+                  <div className="space-y-4">
+                    {sessionsLoading ? (
+                      <div className="py-8 flex items-center justify-center">
+                        <Loader2 className="w-5 h-5 text-brand-500 animate-spin" />
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={loadSessions}
+                          className="btn-ghost btn-sm flex items-center gap-1"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          Refresh
+                        </button>
+                        {sessions.length === 0 ? (
+                          <p className="text-neutral-500 text-body-sm">No active sessions found.</p>
+                        ) : (
+                          <>
+                            <div className="table-container max-w-md">
+                              <table className="table">
+                                <thead>
+                                  <tr>
+                                    <th>Device</th>
+                                    <th>IP</th>
+                                    <th>Created</th>
+                                    <th>Status</th>
+                                    <th></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {sessions.map((s: any) => (
+                                    <tr key={s.id}>
+                                      <td className="font-medium text-neutral-900 text-body-sm">
+                                        {s.userAgent || 'Unknown device'}
+                                      </td>
+                                      <td className="text-body-sm text-neutral-600 font-mono text-xs">
+                                        {s.ipAddress || '—'}
+                                      </td>
+                                      <td className="text-body-sm text-neutral-600">
+                                        {s.createdAt ? new Date(s.createdAt).toLocaleString() : '—'}
+                                      </td>
+                                      <td>
+                                        <Badge variant={s.revoked ? 'neutral' : 'low'}>
+                                          {s.revoked ? 'Revoked' : 'Active'}
+                                        </Badge>
+                                      </td>
+                                      <td>
+                                        {!s.revoked && (
+                                          <button
+                                            onClick={() => handleRevokeSession(s.id)}
+                                            disabled={revokingSessionId === s.id}
+                                            className="text-body-sm text-status-critical hover:text-status-critical-900 underline underline-offset-4"
+                                          >
+                                            {revokingSessionId === s.id ? 'Revoking...' : 'Revoke'}
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            <div className="pt-3">
+                              <button
+                                onClick={handleRevokeAllSessions}
+                                className="btn-danger btn-sm"
+                              >
+                                Revoke All Other Sessions
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Two-factor auth */}
+                {securityView === 'mfa' && (
+                  <div className="space-y-4">
+                    {mfaEnabled ? (
+                      <div className="space-y-4">
+                        <p className="text-body-sm text-neutral-600">
+                          Two-factor authentication is <strong>enabled</strong>. Use recovery codes if you lose access to your authenticator app.
+                        </p>
+                        <button
+                          onClick={handleMfaDisable}
+                          disabled={enablingMfa}
+                          className="btn-danger btn-sm"
+                        >
+                          {enablingMfa ? 'Disabling...' : 'Disable Two-Factor Auth'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <p className="text-body-sm text-neutral-600">
+                          Two-factor authentication is not enabled. Add an extra layer of security to your account.
+                        </p>
+                        {mfaStep === 'setup' ? (
+                          <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-4 space-y-4">
+                            <p className="text-caption text-neutral-500 uppercase tracking-wider mb-1">Scan this QR code</p>
+                            {otpauthUrl ? (
+                              <div className="flex items-center gap-4">
+                                {/* QR code rendered via Google Chart API from the otpauth URL */}
+                                <img
+                                  src={`https://chart.googleapis.com/chart?chs=200x200&chld=M|0&cht=qr&chl=${encodeURIComponent(otpauthUrl)}`}
+                                  alt="QR code"
+                                  className="rounded border"
+                                />
+                                <div>
+                                  <p className="text-caption text-neutral-500 mb-1">Setup key</p>
+                                  <p className="font-mono text-body-sm text-neutral-700 break-all">
+                                    {mfaSecret}
+                                  </p>
+                                </div>
+                              </div>
+                            ) : null}
+                            <p className="text-caption text-neutral-500">
+                              Enter the 6-digit code from your authenticator app to enable 2FA.
+                            </p>
+                            <form onSubmit={(e) => { e.preventDefault(); handleMfaEnable(); }} className="space-y-3">
+                              <input
+                                type="text"
+                                value={mfaCode}
+                                onChange={(e) => setMfaCode(e.target.value)}
+                                placeholder="000000"
+                                className="input w-32 font-mono text-center"
+                                maxLength={6}
+                                required
+                              />
+                              <button
+                                type="submit"
+                                className="btn-primary btn-md"
+                                disabled={enablingMfa || mfaCode.length !== 6}
+                              >
+                                {enablingMfa ? 'Verifying...' : 'Enable 2FA'}
+                              </button>
+                            </form>
+                          </div>
+                        ) : mfaStep === 'recovery' ? (
+                          <div className="bg-status-low-50 border border-status-low-200 rounded-lg p-4 space-y-4">
+                            <p className="text-caption text-status-low-700 uppercase tracking-wider font-medium">
+                              Save your recovery codes
+                            </p>
+                            <p className="text-body-sm text-neutral-600">
+                              Each code can be used once to sign in if you lose your authenticator app.
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {recoveryCodes.map((code, i) => (
+                                <span key={i} className="px-2 py-1 bg-white border border-neutral-200 rounded text-body-sm font-mono text-neutral-900">
+                                  {code}
+                                </span>
+                              ))}
+                            </div>
+                            <p className="text-caption text-neutral-500">
+                              Store these codes securely. They will not be shown again.
+                            </p>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={handleMfaSetup}
+                            disabled={enablingMfa}
+                            className="btn-primary btn-sm"
+                          >
+                            {enablingMfa ? 'Setting up...' : 'Enable Two-Factor Auth'}
+                          </button>
+                        )}
+                  </div>
+                )}
+                </div>
+              )}
               </CardBody>
             </Card>
           )}
