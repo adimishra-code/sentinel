@@ -12,6 +12,7 @@ from datetime import datetime
 # Import routers
 from orchestration.routes import router as orchestration_router
 from detection.routes import router as detection_router
+from evaluation.routes import router as evaluation_router
 
 # Import validated config (fail-fast on missing/invalid env)
 from shared.config import get_settings
@@ -106,6 +107,7 @@ async def run_benchmark_endpoint():
 # Mount routers
 app.include_router(orchestration_router, prefix="/orchestration", tags=["orchestration"])
 app.include_router(detection_router, prefix="/detection", tags=["detection"])
+app.include_router(evaluation_router, prefix="/evaluation", tags=["evaluation"])
 
 
 if __name__ == "__main__":

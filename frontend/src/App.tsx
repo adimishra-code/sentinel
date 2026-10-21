@@ -11,6 +11,7 @@ import { ContentSubmitPage } from './pages/ContentSubmitPage';
 import { AppealsPage } from './pages/AppealsPage';
 import { AppealDetailPage } from './pages/AppealDetailPage';
 import { AuditLogsPage } from './pages/AuditLogsPage';
+import { EvaluationPage } from './pages/EvaluationPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { useAuthStore } from './stores/authStore';
 
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="appeals" element={<AppealsPage />} />
           <Route path="appeals/:id" element={<AppealDetailPage />} />
           <Route path="audit" element={<AuditLogsPage />} />
+          <Route path="evaluation" element={<EvaluationPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

@@ -235,3 +235,18 @@ export const auditApi = {
   getEntityTrail: (entityType: string, entityId: string) =>
     api.get<any[]>(`/audit/${entityType}/${entityId}`),
 };
+
+export const evaluationApi = {
+  run: (data: { threshold?: number; useLLM?: boolean }) =>
+    api.post<any>('/evaluation/run', data),
+  listRuns: (params?: { page?: number; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) search.append(key, String(value));
+      });
+    }
+    return api.get<{ items: any[]; pagination: any }>(`/evaluation/runs?${search.toString()}`);
+  },
+  getRun: (id: string) => api.get<any>(`/evaluation/runs/${id}`),
+};

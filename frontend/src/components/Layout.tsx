@@ -14,6 +14,7 @@ import {
   Shield,
   Scale,
   ClipboardList,
+  BarChart3,
 } from 'lucide-react';
 import { useState } from 'react';
 import { clsx } from 'clsx';
@@ -26,6 +27,7 @@ const navigation = [
   { name: 'Analytics', href: '/analytics', icon: BarChart2 },
   { name: 'Policies', href: '/policies', icon: Shield },
   { name: 'Audit Logs', href: '/audit', icon: ClipboardList },
+  { name: 'Evaluation', href: '/evaluation', icon: BarChart3 },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

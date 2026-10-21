@@ -169,6 +169,7 @@ import policiesRoutes from './modules/policies/policies.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
 import auditRoutes from './modules/audit/audit.routes';
 import integrationsRoutes from './modules/integrations/integrations.routes';
+import evaluationRoutes from './modules/evaluation/evaluation.routes';
 
 // API v1 routes
 const apiRouter = express.Router();
@@ -197,6 +198,7 @@ apiRouter.use('/policies', policiesRoutes);
 apiRouter.use('/notifications', notificationsRoutes);
 apiRouter.use('/audit', auditRoutes);
 apiRouter.use('/integrations', integrationsRoutes);
+apiRouter.use('/evaluation', evaluationRoutes);
 
 // Mount API router
 app.use(`/api/${config.apiVersion}`, apiRouter);
