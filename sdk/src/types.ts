@@ -2,6 +2,7 @@ export interface SentinelConfig {
   apiKey: string;
   baseUrl?: string;
   timeoutMs?: number;
+  maxRetries?: number;
 }
 
 export type ContentType = 'text' | 'image' | 'url' | 'mixed';
@@ -27,6 +28,7 @@ export interface ModerateRequest {
   sourcePlatform?: string;
   metadata?: Record<string, unknown>;
   async?: boolean;
+  idempotencyKey?: string;
 }
 
 export interface ModerationResult {
@@ -57,4 +59,45 @@ export interface WebhookPayload<T = unknown> {
   timestamp: string;
   organizationId: string;
   data: T;
+}
+
+/**
+ * Typed error thrown by the Sentinel SDK.
+ */
+export class SentinelError extends Error {
+  public readonly status: number;
+  public readonly code: string;
+  public readonly details?: Record<string, unknown>;
+
+  constructor(message: string, status: number, code: string, details?: Record<string, unknown>) {
+    super(message);
+    this.name = 'SentinelError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+    Object.setPrototypeOf(this, SentinelError.prototype);
+  }
+
+  static fromResponse(status: number, body: any): SentinelError {
+    const code = body?.error?.code || body?.code || 'UNKNOWN_ERROR';
+    const message = body?.error?.message || body?.message || `HTTP error ${status}`;
+    const details = body?.error?.details || body?.details;
+    return new SentinelError(message, status, code, details);
+  }
+}
+
+export interface ContentItem {
+  id: string;
+  organizationId: string;
+  contentType: ContentType;
+  text?: string;
+  imageUrls?: string[];
+  urls?: string[];
+  metadata?: Record<string, unknown>;
+  authorId?: string;
+  targetId?: string;
+  conversationId?: string;
+  sourcePlatform?: string;
+  language?: string;
+  createdAt: string;
 }
