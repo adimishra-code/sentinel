@@ -39,7 +39,9 @@ export interface ModerationResult {
 }
 
 /**
- * Call AI worker for contextual analysis
+ * Call AI worker for contextual analysis.
+ * Fails safe: if the worker is unavailable or returns invalid JSON, the
+ * caller must route to human review (never auto-allow).
  */
 const analyzeWithAI = async (
   content: string,
@@ -51,12 +53,20 @@ const analyzeWithAI = async (
       context,
     }, {
       timeout: 10000, // 10s timeout
+      headers: {
+        'X-Worker-Shared-Secret': config.worker.sharedSecret,
+      },
     });
 
     return response.data;
   } catch (error) {
     logger.error('AI analysis failed', { error });
-    return null; // Fallback to fast detection only
+    // Fail safe: return a marker so the caller routes to human review
+    return {
+      success: false,
+      error: 'AI analysis unavailable',
+      failSafeReview: true,
+    };
   }
 };
 
@@ -128,8 +138,16 @@ export const moderateContent = async (
         language: preprocessed.detectedLanguage,
       });
 
-      // If AI provided analysis, update risk assessment
-      if (aiAnalysis?.success && aiAnalysis.analysis) {
+      // Fail-safe: if the AI worker is unavailable, route to human review
+      if (aiAnalysis?.failSafeReview) {
+        logger.warn('AI worker unavailable, routing to human review', {
+          contentId: content._id,
+          organizationId,
+        });
+        riskAssessment.requiresHumanReview = true;
+        riskAssessment.reasoning.push('AI analysis unavailable — routed to human review');
+        action = 'review';
+      } else if (aiAnalysis?.success && aiAnalysis.analysis) {
         const aiResult = aiAnalysis.analysis;
 
         // Override with AI recommendation if confidence is high
@@ -176,16 +194,36 @@ export const moderateContent = async (
       caseId = caseDoc._id.toString();
     }
   } else {
-    // Non-text content - placeholder for Phase 2+
+    // Non-text content (image / url) must never be auto-allowed.
+    // Until real image/URL scanning is implemented, route to human review.
     riskAssessment = {
-      riskScore: 0,
-      severity: 'low' as const,
+      riskScore: 1.0,
+      severity: 'critical' as const,
       confidence: 1.0,
-      requiresHumanReview: false,
-      categories: [],
+      requiresHumanReview: true,
+      categories: ['unscanned_content_type'],
       detectedSignals: [],
-      reasoning: ['Image/URL moderation will be implemented in Phase 2+'],
+      reasoning: [
+        `${input.contentType} content is not yet scanned by the detection engine. ` +
+        'Routed to human review by default (fail-safe).',
+      ],
     };
+
+    // Determine final action: always review for unscanned content types
+    action = 'review';
+
+    // Create a case for human review
+    const priority: CasePriority = CasePriority.HIGH;
+    const caseDoc = await createCase({
+      contentId: content._id.toString(),
+      organizationId,
+      riskScore: riskAssessment.riskScore,
+      severity: riskAssessment.riskScore,
+      categories: riskAssessment.categories,
+      priority,
+      aiAnalysis: undefined,
+    });
+    caseId = caseDoc._id.toString();
   }
 
   const latencyMs = Date.now() - startTime;

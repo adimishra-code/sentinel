@@ -3,10 +3,12 @@ Worker Orchestration Routes
 Handles AI moderation requests from backend
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import os
+
+from shared.config import get_settings
 
 router = APIRouter()
 
@@ -26,13 +28,27 @@ class AnalyzeResponse(BaseModel):
     error: Optional[str] = None
 
 
+def _verify_worker_secret(x_worker_shared_secret: Optional[str] = Header(None)) -> None:
+    """Verify the backend-to-worker shared secret."""
+    settings = get_settings()
+    expected = settings.worker_shared_secret
+    if not x_worker_shared_secret or x_worker_shared_secret != expected:
+        raise HTTPException(status_code=401, detail='Invalid or missing worker shared secret')
+
+
 @router.post("/analyze", response_model=AnalyzeResponse)
-async def analyze_content(request: AnalyzeRequest):
+async def analyze_content(
+    request: AnalyzeRequest,
+    x_worker_shared_secret: Optional[str] = Header(None),
+):
     """
     Analyze content with Gemini AI.
     Returns structured moderation assessment.
     Falls back gracefully if API key is not configured.
+    Requires the WORKER_SHARED_SECRET header to prevent unauthorized calls.
     """
+    _verify_worker_secret(x_worker_shared_secret)
+
     gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("MODEL_API_KEY")
 
     if not gemini_key:
