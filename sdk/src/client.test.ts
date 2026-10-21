@@ -186,6 +186,141 @@ describe('Sentinel SDK', () => {
     expect(result.contentId).toBe('retry-content');
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('exhausts retries on persistent failure', async () => {
+    fetchMock.mockRejectedValue(new Error('Persistent network error'));
+
+    const client = new Sentinel({ apiKey: 'key', baseUrl, maxRetries: 2 });
+    await expect(client.moderate({ text: 'retry me' })).rejects.toThrow(
+      'Persistent network error'
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3); // initial + 2 retries
+  });
+
+  it('handles 429 with Retry-After header', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: { 'Retry-After': '1' },
+        json: async () => ({
+          error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Rate limit exceeded' },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: {
+            action: 'allow',
+            riskScore: 0.1,
+            severity: 'low',
+            categories: [],
+            requiresHumanReview: false,
+            contentId: 'rate-limited-content',
+          },
+        }),
+      });
+
+    const client = new Sentinel({ apiKey: 'key', baseUrl, maxRetries: 3 });
+    const result = await client.moderate({ text: 'rate limited' });
+    expect(result.contentId).toBe('rate-limited-content');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry 4xx client errors (except 429)', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: { code: 'BAD_REQUEST', message: 'Invalid request' },
+      }),
+    });
+
+    const client = new Sentinel({ apiKey: 'key', baseUrl, maxRetries: 3 });
+    await expect(client.moderate({ text: 'bad request' })).rejects.toThrow(SentinelError);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // no retry on 400
+  });
+
+  it('waitForJob times out', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          jobId: 'never-completes',
+          status: 'waiting',
+          result: undefined,
+        },
+      }),
+    });
+
+    const client = new Sentinel({ apiKey: 'key', baseUrl });
+    await expect(
+      client.waitForJob('never-completes', 100, 100)
+    ).rejects.toThrow(SentinelError);
+  });
+
+  it('waitForJob handles failed job', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          jobId: 'failed-job',
+          status: 'failed',
+          result: undefined,
+          failedReason: 'Worker crashed',
+        },
+      }),
+    });
+
+    const client = new Sentinel({ apiKey: 'key', baseUrl });
+    await expect(client.waitForJob('failed-job')).rejects.toThrow(SentinelError);
+  });
+
+  it('handles non-JSON error body', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      text: async () => 'Internal Server Error',
+    });
+
+    const client = new Sentinel({ apiKey: 'key', baseUrl });
+    await expect(client.moderate({ text: 'test' })).rejects.toThrow();
+  });
+});
+
+describe('verifyWebhookSignature', () => {
+  it('verifies a valid timestamped signature', () => {
+    const timestamp = Date.now();
+    const body = `${timestamp}.${JSON.stringify({ event: 'case.resolved', data: { caseId: '1' } })}`;
+    const secret = 'my-secret';
+    const sig = `sha256=${require('crypto').createHmac('sha256', secret).update(body).digest('hex')}`;
+    expect(verifyWebhookSignature(body, sig, secret)).toBe(true);
+  });
+
+  it('rejects a stale signature', () => {
+    const oldTimestamp = Date.now() - 10 * 60 * 1000;
+    const body = `${oldTimestamp}.${JSON.stringify({ event: 'x', data: {} })}`;
+    const secret = 'my-secret';
+    const sig = `sha256=${require('crypto').createHmac('sha256', secret).update(body).digest('hex')}`;
+    expect(verifyWebhookSignature(body, sig, secret)).toBe(false);
+  });
+
+  it('rejects a tampered signature', () => {
+    const timestamp = Date.now();
+    const body = `${timestamp}.${JSON.stringify({ event: 'x', data: {} })}`;
+    expect(verifyWebhookSignature(body, 'sha256=deadbeef', 'secret')).toBe(false);
+  });
+
+  it('rejects a malformed signature header', () => {
+    const timestamp = Date.now();
+    const body = `${timestamp}.${JSON.stringify({ event: 'x', data: {} })}`;
+    expect(verifyWebhookSignature(body, 'not-hex-at-all', 'secret')).toBe(false);
+    expect(verifyWebhookSignature(body, 'md5=abc123', 'secret')).toBe(false);
+    expect(verifyWebhookSignature(body, '', 'secret')).toBe(false);
+  });
 });
 
 describe('verifyWebhookSignature', () => {

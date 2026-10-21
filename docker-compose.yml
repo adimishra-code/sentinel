@@ -89,8 +89,9 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       API_VERSION: ${API_VERSION:-v1}
       WORKER_URL: http://worker:8000
-    ports:
-      - "3000:3000"
+# Worker port NOT published in production — backend reaches worker via internal Docker network
+    # ports:
+    #   - "8000:8000"
     volumes:
       - ./backend:/app
       - /app/node_modules
@@ -173,8 +174,7 @@ services:
       MODEL_API_KEY: ${MODEL_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-    ports:
-      - "8000:8000"
+    # Worker port NOT published in production — backend reaches worker via internal Docker network
     volumes:
       - ./worker:/app
       - /app/__pycache__
