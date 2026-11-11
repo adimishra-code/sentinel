@@ -45,7 +45,7 @@ services:
 
   # Qdrant - Vector store for embeddings and similar-case retrieval
   qdrant:
-    image: qdrant/qdrant:v1.8.0
+    image: qdrant/qdrant:v1.9.1
     container_name: sentinel-qdrant
     restart: unless-stopped
     ports:
