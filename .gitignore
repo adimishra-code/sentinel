@@ -61,6 +61,8 @@ Desktop.ini
 .cache/
 .eslintcache
 .stylelintcache
+gitleaks*
+docs/evidence/
 
 # Documentation/Planning files (not part of codebase)
 PHASE_*.md

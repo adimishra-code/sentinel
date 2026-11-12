@@ -18,6 +18,7 @@ import { Case } from '../modules/cases/case.model';
 import { Appeal } from '../modules/appeals/appeal.model';
 import { generateAccessToken } from '../modules/auth/auth.utils';
 import { UserRole } from '../types';
+import { closeRedis } from '../utils/redis';
 
 let mongod: MongoMemoryServer;
 let orgId: string;
@@ -56,6 +57,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await closeRedis();
   await mongoose.connection.close();
   await mongod.stop();
 });

@@ -18,7 +18,6 @@ const totpSecretSchema = new Schema<ITotpSecret>(
       ref: 'User',
       required: true,
       unique: true,
-      index: true,
     },
     encryptedSecret: {
       type: String,

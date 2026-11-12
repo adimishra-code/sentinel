@@ -15,7 +15,6 @@ const passwordResetTokenSchema = new Schema<IPasswordResetToken>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true,
-      index: true,
     },
     tokenHash: {
       type: String,

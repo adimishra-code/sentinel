@@ -19,6 +19,7 @@ import { Appeal } from '../modules/appeals/appeal.model';
 import { ApiKey } from '../modules/auth/api-key.model';
 import { generateAccessToken } from '../modules/auth/auth.utils';
 import { UserRole } from '../types';
+import { closeRedis } from '../utils/redis';
 
 let mongod: MongoMemoryServer;
 let orgAId: string;
@@ -68,6 +69,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await closeRedis();
   await mongoose.connection.close();
   await mongod.stop();
 });

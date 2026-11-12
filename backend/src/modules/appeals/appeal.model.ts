@@ -34,7 +34,6 @@ const appealSchema = new Schema<IAppeal>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true,
-      index: true,
     },
     reason: {
       type: String,

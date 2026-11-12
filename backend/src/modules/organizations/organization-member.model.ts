@@ -23,7 +23,6 @@ const organizationMemberSchema = new Schema<IOrganizationMember>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true,
-      index: true,
     },
     role: {
       type: String,

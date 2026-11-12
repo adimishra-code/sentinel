@@ -53,7 +53,6 @@ const refreshTokenSchema = new Schema<IRefreshToken>(
 );
 
 // Indexes
-refreshTokenSchema.index({ tokenHash: 1 }, { unique: true });
 refreshTokenSchema.index({ userId: 1, revoked: 1 });
 refreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL index
 

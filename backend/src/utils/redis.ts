@@ -7,9 +7,13 @@ let client: Redis | null = null;
 export const getRedisClient = (): Redis => {
   if (!client) {
     client = new Redis(config.redis.url, {
-      maxRetriesPerRequest: 3,
-      enableReadyCheck: true,
+      maxRetriesPerRequest: process.env.NODE_ENV === 'test' ? 1 : 3,
+      enableReadyCheck: process.env.NODE_ENV !== 'test',
+      lazyConnect: process.env.NODE_ENV === 'test',
       retryStrategy: (times: number) => {
+        if (process.env.NODE_ENV === 'test' || times > 3) {
+          return null; // Stop retrying in tests or after 3 attempts
+        }
         const delay = Math.min(times * 100, 3000);
         return delay;
       },
@@ -39,7 +43,12 @@ export const isRedisHealthy = async (): Promise<boolean> => {
 
 export const closeRedis = async (): Promise<void> => {
   if (client) {
-    await client.quit();
-    client = null;
+    try {
+      await client.quit();
+    } catch {
+      client.disconnect();
+    } finally {
+      client = null;
+    }
   }
 };

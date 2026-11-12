@@ -65,7 +65,6 @@ const apiKeySchema = new Schema<IApiKey>(
 );
 
 // Indexes
-apiKeySchema.index({ keyHash: 1 }, { unique: true });
 apiKeySchema.index({ organizationId: 1, status: 1 });
 apiKeySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0, sparse: true });
 

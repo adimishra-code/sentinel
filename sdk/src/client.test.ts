@@ -286,7 +286,7 @@ describe('Sentinel SDK', () => {
       text: async () => 'Internal Server Error',
     });
 
-    const client = new Sentinel({ apiKey: 'key', baseUrl });
+    const client = new Sentinel({ apiKey: 'key', baseUrl, maxRetries: 0 });
     await expect(client.moderate({ text: 'test' })).rejects.toThrow();
   });
 });
